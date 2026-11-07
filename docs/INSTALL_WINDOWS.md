@@ -8,6 +8,14 @@
 - OBS Studio **31 o superior**, x64.
 - Webcam solo para los perfiles de face swap.
 
+### Dónde descargar el instalador
+- **Compilación de prueba:** pestaña *Actions* del repositorio → workflow **Build Windows Installer** → la ejecución
+  más reciente → sección *Artifacts* → `AvatarLive-Setup-<versión>-Lite` (zip con el `.exe` y su `.sha256`).
+- **Versión publicada:** al crear una etiqueta `v<versión>` el mismo workflow adjunta el instalador a un
+  borrador de *Release* en GitHub, que el mantenedor revisa y publica.
+
+El instalador no está firmado todavía: Windows SmartScreen puede mostrar un aviso. Compruebe el SHA-256 publicado.
+
 ### Pasos
 1. Cierre OBS y ejecute `AvatarLive-Setup-<versión>-Lite.exe` (o `-Accelerated.exe`). El instalador detecta
    OBS desde `HKLM\SOFTWARE\OBS Studio` y comprueba la versión de `obs64.exe`.
