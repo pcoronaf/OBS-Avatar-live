@@ -17,7 +17,7 @@
       "default": "auto"
     },
     "video_input": { "type": ["string", "null"], "description": "Camera index or device id" },
-    "audio_input": { "type": ["string", "null"], "description": "Microphone device id/name; null = system default" },
+    "audio_input": { "type": ["string", "null"], "description": "Microphone device id/name; null = system default; \"none\" = do not open the microphone" },
     "output": {
       "type": "object",
       "additionalProperties": false,

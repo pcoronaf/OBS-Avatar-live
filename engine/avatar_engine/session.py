@@ -49,6 +49,9 @@ class Session:
 
             src = self.config.get("audio_input")
             a = self.config["audio"]
+            if src == "none":  # user disabled the microphone: idle animation only, mouth closed
+                self.engine.audio_disabled = True  # type: ignore[attr-defined]
+                return
             if isinstance(src, str) and src.startswith("file:"):
                 cap = WavFileCapture(self.engine.push_audio, src[5:], a["frame_ms"])
             else:

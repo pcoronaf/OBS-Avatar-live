@@ -525,10 +525,14 @@ bool on_refresh_status(obs_properties_t *, obs_property_t *, void *)
 	return true; // returning true rebuilds the properties view with fresh status
 }
 
-void add_device_list(obs_properties_t *grp, const char *name, const char *text, const json::Value &devices)
+void add_device_list(obs_properties_t *grp, const char *name, const char *text, const json::Value &devices,
+		     bool allow_none = false)
 {
 	obs_property_t *p = obs_properties_add_list(grp, name, text, OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(p, T_("Device.Default"), "");
+	// "none": the engine never opens the microphone (the meeting app keeps using it directly).
+	if (allow_none)
+		obs_property_list_add_string(p, T_("Device.None"), "none");
 	for (size_t i = 0; i < devices.size(); i++) {
 		const json::Value &d = devices.at(i);
 		std::string id = d["id"].is_number() ? std::to_string(d["id"].as_int()) : d["id"].as_string("");
@@ -586,7 +590,7 @@ obs_properties_t *avatar_get_properties(void *data)
 	for (size_t i = 0; i < sizeof(kUserProfiles) / sizeof(kUserProfiles[0]); i++)
 		obs_property_list_add_string(ulist, T_(kUserProfileKeys[i]), kUserProfiles[i]);
 	add_device_list(eng, "video_input", T_("Input.Webcam"), st.devices["video"]);
-	add_device_list(eng, "audio_input", T_("Input.Microphone"), st.devices["audio"]);
+	add_device_list(eng, "audio_input", T_("Input.Microphone"), st.devices["audio"], true);
 	obs_properties_add_button2(eng, "refresh_devices", T_("Input.RefreshDevices"), on_refresh_devices, s);
 	obs_properties_add_group(props, "grp_engine", T_("Group.Engine"), OBS_GROUP_NORMAL, eng);
 

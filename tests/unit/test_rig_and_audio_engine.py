@@ -84,3 +84,24 @@ def test_audio_engine_end_to_end(profile):
     assert f.extra["mouth"]["open"] > 0.3
     m = eng.get_metrics()
     assert m["engine"] == "lite_cpu_audio" and m["audio_frames"] == 50
+
+
+def test_audio_input_none_never_opens_microphone(profile, monkeypatch):
+    import avatar_engine.audio.capture as capture
+    from avatar_engine.session import Session
+
+    def boom(*a, **k):
+        raise AssertionError("microphone must not be opened")
+
+    monkeypatch.setattr(capture, "MicrophoneCapture", boom)
+    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id,
+                 "audio_input": "none", "output": {"width": 640, "height": 360}}, None, lambda n, p: None)
+    s.start()
+    try:
+        assert s.inputs == []
+        m = s.metrics()
+        assert m["audio_disabled"] is True and m["audio_stalled"] is False
+        f = s.engine.poll_frame(now_ns())
+        assert f.extra["mouth"]["open"] == 0.0
+    finally:
+        s.stop()

@@ -32,6 +32,7 @@ class LiteCpuAudioEngine(IAvatarEngine):
         self._last_mouth = None
         self._audio_frames = 0
         self._last_audio_ns = 0
+        self.audio_disabled = False
 
     @classmethod
     def info(cls) -> EngineInfo:
@@ -112,7 +113,8 @@ class LiteCpuAudioEngine(IAvatarEngine):
             "stage_p95_ms": self.stages.p95(),
             "audio_frames": self._audio_frames,
             "audio_age_ms": None if audio_age is None else round(audio_age, 1),
-            "audio_stalled": audio_age is None or audio_age > 500,
+            "audio_disabled": self.audio_disabled,
+            "audio_stalled": (not self.audio_disabled) and (audio_age is None or audio_age > 500),
             "viseme_model": VisemeEstimator.model,
             "mouth": self._last_mouth.as_dict() if self._last_mouth else None,
         }
