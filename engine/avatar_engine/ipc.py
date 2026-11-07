@@ -150,11 +150,13 @@ if sys.platform == "win32":  # pragma: no cover - exercised on Windows CI
                                           wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
     kernel32.GetNamedPipeClientProcessId.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.ULONG)]
     kernel32.DisconnectNamedPipe.argtypes = [wintypes.HANDLE]
+    kernel32.FlushFileBuffers.argtypes = [wintypes.HANDLE]
 
     class PipeConnection(Connection):
-        def __init__(self, handle: int) -> None:
+        def __init__(self, handle: int, server_side: bool = False) -> None:
             super().__init__()
             self.handle = handle
+            self.server_side = server_side
             pid = wintypes.ULONG(0)
             if kernel32.GetNamedPipeClientProcessId(handle, ctypes.byref(pid)):
                 self.peer_pid = pid.value
@@ -197,7 +199,14 @@ if sys.platform == "win32":  # pragma: no cover - exercised on Windows CI
                         self._pending.cancel()
                     except OSError:
                         pass
-                kernel32.DisconnectNamedPipe(self.handle)
+                if self.server_side:
+                    # DisconnectNamedPipe discards unread data: let the client drain the last
+                    # reply first (bounded, so a stuck client cannot hang the engine).
+                    h = self.handle
+                    t = threading.Thread(target=lambda: kernel32.FlushFileBuffers(h), daemon=True)
+                    t.start()
+                    t.join(1.0)
+                    kernel32.DisconnectNamedPipe(self.handle)
                 _winapi.CloseHandle(self.handle)
                 self.handle = 0
 
@@ -237,7 +246,7 @@ if sys.platform == "win32":  # pragma: no cover - exercised on Windows CI
                 except OSError:
                     _winapi.CloseHandle(h)
                     return None
-                return PipeConnection(h)
+                return PipeConnection(h, server_side=True)
 
         def close(self) -> None:
             self._closed = True

@@ -547,12 +547,12 @@ obs_properties_t *avatar_get_properties(void *data)
 	obs_properties_t *ctl = obs_properties_create();
 	obs_property_t *status = obs_properties_add_text(ctl, "status_info", status_text(s).c_str(), OBS_TEXT_INFO);
 	obs_property_text_set_info_type(status, st.last_error.empty() ? OBS_TEXT_INFO_NORMAL : OBS_TEXT_INFO_WARNING);
-	obs_properties_add_button(ctl, "start", T_("Control.Start"), on_start);
-	obs_properties_add_button(ctl, "stop", T_("Control.Stop"), on_stop);
-	obs_properties_add_button(ctl, "pause", T_("Control.Pause"), on_pause);
-	obs_properties_add_button(ctl, "resume", T_("Control.Resume"), on_resume);
-	obs_properties_add_button(ctl, "freeze", T_("Control.Freeze"), on_freeze);
-	obs_properties_add_button(ctl, "refresh_status", T_("Control.RefreshStatus"), on_refresh_status);
+	obs_properties_add_button2(ctl, "start", T_("Control.Start"), on_start, s);
+	obs_properties_add_button2(ctl, "stop", T_("Control.Stop"), on_stop, s);
+	obs_properties_add_button2(ctl, "pause", T_("Control.Pause"), on_pause, s);
+	obs_properties_add_button2(ctl, "resume", T_("Control.Resume"), on_resume, s);
+	obs_properties_add_button2(ctl, "freeze", T_("Control.Freeze"), on_freeze, s);
+	obs_properties_add_button2(ctl, "refresh_status", T_("Control.RefreshStatus"), on_refresh_status, s);
 	obs_properties_add_group(props, "grp_control", T_("Group.Control"), OBS_GROUP_NORMAL, ctl);
 
 	// Profile + consent (spec §2.1, §8)
@@ -565,10 +565,10 @@ obs_properties_t *avatar_get_properties(void *data)
 	obs_property_t *self = obs_properties_add_bool(prof, "consent_subject_is_self", T_("Profile.SubjectIsSelf"));
 	obs_property_set_modified_callback(self, consent_modified);
 	obs_properties_add_text(prof, "consent_reference", T_("Profile.ConsentReference"), OBS_TEXT_DEFAULT);
-	obs_properties_add_button(prof, "create_profile", T_("Profile.Create"), on_create_profile);
+	obs_properties_add_button2(prof, "create_profile", T_("Profile.Create"), on_create_profile, s);
 	obs_property_t *pid = obs_properties_add_text(prof, "profile_id", T_("Profile.Id"), OBS_TEXT_DEFAULT);
 	obs_property_set_enabled(pid, false); // filled by the engine
-	obs_properties_add_button(prof, "delete_profile", T_("Profile.Delete"), on_delete_profile);
+	obs_properties_add_button2(prof, "delete_profile", T_("Profile.Delete"), on_delete_profile, s);
 	obs_properties_add_group(props, "grp_profile", T_("Group.Profile"), OBS_GROUP_NORMAL, prof);
 
 	// Engine and inputs
@@ -587,7 +587,7 @@ obs_properties_t *avatar_get_properties(void *data)
 		obs_property_list_add_string(ulist, T_(kUserProfileKeys[i]), kUserProfiles[i]);
 	add_device_list(eng, "video_input", T_("Input.Webcam"), st.devices["video"]);
 	add_device_list(eng, "audio_input", T_("Input.Microphone"), st.devices["audio"]);
-	obs_properties_add_button(eng, "refresh_devices", T_("Input.RefreshDevices"), on_refresh_devices);
+	obs_properties_add_button2(eng, "refresh_devices", T_("Input.RefreshDevices"), on_refresh_devices, s);
 	obs_properties_add_group(props, "grp_engine", T_("Group.Engine"), OBS_GROUP_NORMAL, eng);
 
 	// Output framing

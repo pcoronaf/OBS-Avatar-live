@@ -24,8 +24,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <cstdint>
 #include <cstdio>
-#include <charconv>
+#include <clocale>
 #include <cmath>
+#include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
@@ -194,6 +195,12 @@ private:
 		return nullptr;
 	}
 
+	static char locale_decimal_point()
+	{
+		const lconv *lc = std::localeconv();
+		return (lc && lc->decimal_point && lc->decimal_point[0]) ? lc->decimal_point[0] : '.';
+	}
+
 	static void dump_number(std::string &out, double d)
 	{
 		char buf[40];
@@ -204,9 +211,13 @@ private:
 		if (std::floor(d) == d && std::fabs(d) < 9007199254740992.0) {
 			std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(d));
 		} else {
-			auto res = std::to_chars(buf, buf + sizeof(buf), d); // locale independent
-			out.append(buf, res.ptr);
-			return;
+			// snprintf uses the C locale's decimal point (',' under es-ES): normalise to '.'.
+			// (std::to_chars for double is unavailable on older macOS SDKs.)
+			std::snprintf(buf, sizeof(buf), "%.17g", d);
+			const char dp = locale_decimal_point();
+			for (char *p = buf; *p; ++p)
+				if (*p == dp)
+					*p = '.';
 		}
 		out += buf;
 	}
@@ -342,10 +353,16 @@ private:
 			}
 			if (!digits)
 				return fail("bad number");
-			// from_chars is locale independent (strtod is not: es-ES uses ',').
-			double d = 0.0;
-			auto res = std::from_chars(start, cur, d);
-			if (res.ec != std::errc() || res.ptr != cur)
+			// strtod follows the C locale (es-ES uses ','): swap '.' for the locale's
+			// decimal point before parsing. The syntax was already validated above.
+			std::string num(start, cur);
+			const char dp = locale_decimal_point();
+			for (char &ch : num)
+				if (ch == '.')
+					ch = dp;
+			char *endp = nullptr;
+			double d = std::strtod(num.c_str(), &endp);
+			if (endp != num.c_str() + num.size())
 				return fail("bad number");
 			out = Value(d);
 			return true;
