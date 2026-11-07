@@ -79,6 +79,10 @@ def parse_device(dev) -> tuple[int | str, int | None]:
             return int(s_[len(tag):]), api
     if s_.isdigit():
         return int(s_), None
+    if not (os.path.exists(s_) or "://" in s_):  # a camera *name* (older saved settings): look it up
+        for d in list_video_devices():
+            if d["name"].lower() == s_.lower():
+                return parse_device(d["id"])
     return s_, None
 
 

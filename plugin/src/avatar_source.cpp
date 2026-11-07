@@ -529,7 +529,8 @@ bool on_refresh_status(obs_properties_t *, obs_property_t *, void *)
 void add_device_list(obs_properties_t *grp, const char *name, const char *text, const json::Value &devices,
 		     bool allow_none = false)
 {
-	obs_property_t *p = obs_properties_add_list(grp, name, text, OBS_COMBO_TYPE_EDITABLE, OBS_COMBO_FORMAT_STRING);
+	// Non-editable: OBS stores the item value (device id), not the visible text.
+	obs_property_t *p = obs_properties_add_list(grp, name, text, OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(p, T_("Device.Default"), "");
 	// "none": the engine never opens the microphone (the meeting app keeps using it directly).
 	if (allow_none)

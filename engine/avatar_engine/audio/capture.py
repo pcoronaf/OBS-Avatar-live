@@ -24,38 +24,157 @@ class AudioUnavailable(RuntimeError):
     pass
 
 
-def list_input_devices() -> list[dict]:
+# Windows exposes every microphone once per host API. WASAPI (shared mode) is preferred: low latency
+# and it never takes the device away from the meeting app. MME is the most compatible fallback.
+HOSTAPI_PREFERENCE = ("Windows WASAPI", "MME", "Windows DirectSound", "Windows WDM-KS")
+ALIAS_NAMES = ("microsoft sound mapper", "primary sound capture driver")
+
+
+def _rank(hostapi_name: str) -> int:
     try:
-        import sounddevice as sd
+        return HOSTAPI_PREFERENCE.index(hostapi_name)
+    except ValueError:
+        return len(HOSTAPI_PREFERENCE)
+
+
+def _input_devices(sd) -> list[dict]:
+    """All input devices as dicts with index, name, hostapi name, channels, default rate."""
+    try:
+        hostapis = [h["name"] for h in sd.query_hostapis()]
+        devs = sd.query_devices()
     except Exception:
         return []
     out = []
-    try:
-        for i, d in enumerate(sd.query_devices()):
-            if d.get("max_input_channels", 0) > 0:
-                out.append({"id": str(i), "name": d["name"]})
-    except Exception:
-        return []
+    for i, d in enumerate(devs):
+        if d.get("max_input_channels", 0) <= 0:
+            continue
+        name = str(d["name"]).strip()
+        if any(a in name.lower() for a in ALIAS_NAMES):
+            continue
+        out.append({"index": i, "name": name, "hostapi": hostapis[d["hostapi"]] if d["hostapi"] < len(hostapis) else "",
+                    "channels": int(d["max_input_channels"]), "rate": float(d.get("default_samplerate") or 16000)})
     return out
+
+
+def _same_device(a: str, b: str) -> bool:
+    """MME truncates names to 31 characters, so compare by prefix as well."""
+    a, b = a.lower(), b.lower()
+    return a == b or (min(len(a), len(b)) >= 24 and (a.startswith(b) or b.startswith(a)))
+
+
+def list_input_devices(sd=None) -> list[dict]:
+    """One entry per physical microphone; the id is its name (stable across reboots/replugging)."""
+    if sd is None:
+        try:
+            import sounddevice as sd
+        except Exception:
+            return []
+    best: list[dict] = []
+    for d in sorted(_input_devices(sd), key=lambda d: (_rank(d["hostapi"]), -len(d["name"]))):
+        if not any(_same_device(d["name"], b["name"]) for b in best):
+            best.append(d)
+    return [{"id": d["name"], "name": d["name"]} for d in best]
+
+
+def resolve_input_candidates(sd, device) -> list[dict | None]:
+    """Devices to try, best first. None means the system default device."""
+    if device in (None, "", "default"):
+        return [None]
+    devs = _input_devices(sd)
+    if str(device).isdigit():
+        idx = int(device)
+        return [d for d in devs if d["index"] == idx] or [None]
+    want = str(device).strip()
+    matches = [d for d in devs if _same_device(d["name"], want)]
+    if not matches:
+        matches = [d for d in devs if want.lower() in d["name"].lower()]
+    if not matches:
+        raise AudioUnavailable(f"microphone not found: {want!r}")
+    return sorted(matches, key=lambda d: _rank(d["hostapi"]))
+
+
+class _Resampler:
+    """Streaming linear resampler to 16 kHz with a box pre-filter when downsampling (enough for
+    the energy/spectral features that drive the mouth)."""
+
+    def __init__(self, in_rate: float, out_rate: int) -> None:
+        self.ratio = in_rate / out_rate
+        self.k = max(1, int(round(self.ratio))) if self.ratio >= 1.5 else 1
+        self.pos = 0.0
+        self.tail = np.zeros(0, np.float32)
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        if abs(self.ratio - 1.0) < 1e-6:
+            return x.astype(np.int16)
+        buf = np.concatenate([self.tail, x.astype(np.float32)])
+        if self.k > 1:
+            buf_f = np.convolve(buf, np.ones(self.k, np.float32) / self.k, mode="same")
+        else:
+            buf_f = buf
+        n_out = int((len(buf) - 1 - self.pos) / self.ratio) + 1 if len(buf) > 1 else 0
+        if n_out <= 0:
+            self.tail = buf
+            return np.zeros(0, np.int16)
+        t = self.pos + np.arange(n_out) * self.ratio
+        y = np.interp(t, np.arange(len(buf)), buf_f)
+        consumed = int(np.floor(t[-1] + self.ratio))
+        consumed = min(consumed, len(buf) - 1)
+        self.pos = t[-1] + self.ratio - consumed
+        self.tail = buf[consumed:]
+        return np.clip(y, -32768, 32767).astype(np.int16)
 
 
 class MicrophoneCapture:
     def __init__(self, callback: Callback, device: str | None = None, sample_rate: int = 16000,
-                 frame_ms: int = 20) -> None:
-        try:
-            import sounddevice as sd
-        except Exception as exc:  # pragma: no cover - depends on host
-            raise AudioUnavailable(f"microphone support unavailable: {exc}") from exc
+                 frame_ms: int = 20, sd=None) -> None:
+        if sd is None:
+            try:
+                import sounddevice as sd
+            except Exception as exc:  # pragma: no cover - depends on host
+                raise AudioUnavailable(f"microphone support unavailable: {exc}") from exc
         self._sd = sd
         self.callback = callback
         self.sample_rate = sample_rate
-        self.blocksize = sample_rate * frame_ms // 1000
-        dev = int(device) if device not in (None, "") and str(device).isdigit() else (device or None)
-        self.stream = sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16", blocksize=self.blocksize,
-                                     device=dev, callback=self._on_audio, latency="low")
+        self.frame_ms = frame_ms
+        self.stream = None
+        self.device_info: dict | None = None
+        errors = []
+        for cand in resolve_input_candidates(sd, device):
+            try:
+                self._open(cand)
+                self.device_info = cand
+                break
+            except Exception as exc:
+                errors.append(f"{cand['hostapi'] if cand else 'default'}: {exc}")
+        if self.stream is None:
+            raise AudioUnavailable("cannot open microphone (" + "; ".join(errors) + ")")
+
+    def _open(self, cand: dict | None) -> None:
+        sd = self._sd
+        if cand is None:
+            info = sd.query_devices(kind="input")
+            rate, channels, index = float(info.get("default_samplerate") or 16000), int(info["max_input_channels"]), None
+        else:
+            rate, channels, index = cand["rate"], cand["channels"], cand["index"]
+        channels = max(1, min(2, channels))
+        # WASAPI shared mode only accepts the device's own rate: capture there and resample ourselves.
+        if cand is None or cand["hostapi"] != "Windows WASAPI":
+            try:
+                sd.check_input_settings(device=index, samplerate=self.sample_rate, channels=1, dtype="int16")
+                rate, channels = float(self.sample_rate), 1
+            except Exception:
+                pass
+        self._channels = channels
+        self._resample = _Resampler(rate, self.sample_rate)
+        self.stream = sd.InputStream(samplerate=rate, channels=channels, dtype="int16",
+                                     blocksize=int(rate * self.frame_ms / 1000), device=index,
+                                     callback=self._on_audio, latency="low")
 
     def _on_audio(self, indata, frames, time_info, status) -> None:  # PortAudio thread: keep it short
-        self.callback(indata[:, 0].copy(), self.sample_rate, now_ns())
+        x = indata[:, 0] if self._channels == 1 else indata.mean(axis=1)
+        pcm = self._resample(x)
+        if len(pcm):
+            self.callback(pcm, self.sample_rate, now_ns())
 
     def start(self) -> None:
         self.stream.start()
