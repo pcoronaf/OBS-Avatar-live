@@ -164,3 +164,15 @@ def test_runtime_errors_fall_back_to_cpu(profile, fake_detector, fake_models):
         eng.on_runtime_error(RuntimeError("device removed"))
     assert eng.candidate.key == "cpu" and eng.generation_id != gen
     assert any(n == "fallback" for n, _ in events)
+
+
+def test_device_ids_and_virtual_camera_filter():
+    import cv2
+
+    from avatar_engine.vision.capture import _is_own_output, parse_device
+
+    assert parse_device("msmf:2") == (2, cv2.CAP_MSMF)
+    assert parse_device("dshow:0") == (0, cv2.CAP_DSHOW)
+    assert parse_device("1") == (1, None) and parse_device(None) == (0, None)
+    assert parse_device("file.mp4") == ("file.mp4", None)
+    assert _is_own_output("OBS Virtual Camera") and not _is_own_output("Integrated Webcam")

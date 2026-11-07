@@ -21,6 +21,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 namespace avatar {
 
@@ -163,9 +164,30 @@ void EngineController::request_devices()
 					return;
 				std::lock_guard<std::mutex> lock(mutex_);
 				status_.devices = r.payload;
+				status_.devices_version++;
 			});
 		},
 		true);
+}
+
+bool EngineController::refresh_devices(uint32_t timeout_ms)
+{
+	uint64_t before;
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		before = status_.devices_version;
+	}
+	request_devices();
+	const uint64_t deadline = monotonic_ns() + uint64_t(timeout_ms) * 1000000ull;
+	while (monotonic_ns() < deadline) {
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			if (status_.devices_version != before)
+				return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+	return false;
 }
 
 void EngineController::create_profile(const json::Value &payload, ResultFn cb)
@@ -325,6 +347,14 @@ bool EngineController::launch_and_connect()
 		set_state("idle");
 	}
 	log(Info, "connected to engine " + hello["engine_version"].as_string("?"));
+	// Fetch cameras/microphones right away so the properties lists are filled when opened.
+	ipc_.send_request("list_devices", json::Value::object(), [this](const ReplyResult &r) {
+		if (!r.ok)
+			return;
+		std::lock_guard<std::mutex> lock(mutex_);
+		status_.devices = r.payload;
+		status_.devices_version++;
+	});
 	return true;
 }
 

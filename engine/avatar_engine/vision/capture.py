@@ -19,17 +19,67 @@ class CameraUnavailable(RuntimeError):
     pass
 
 
+VIRTUAL_CAMERA_NAMES = ("obs virtual camera", "obs-camera", "obs camera")
+
+
+def _is_own_output(name: str) -> bool:
+    """Never offer OBS's own virtual camera as input: it would feed the avatar back into itself."""
+    n = (name or "").lower()
+    return any(v in n for v in VIRTUAL_CAMERA_NAMES)
+
+
 def list_video_devices(max_index: int = 6) -> list[dict]:
-    """Best-effort enumeration (OpenCV has no device names on Windows without extra APIs)."""
-    out = []
+    """Cameras with their real names. Ids carry the capture backend ("msmf:0", "dshow:1") because
+    Media Foundation and DirectShow number devices differently."""
+    out: list[dict] = []
+    try:
+        from cv2_enumerate_cameras import enumerate_cameras
+
+        backends = [(cv2.CAP_MSMF, "msmf"), (cv2.CAP_DSHOW, "dshow")] if sys.platform == "win32" else \
+            [(cv2.CAP_ANY, "any")]
+        seen = set()
+        for api, tag in backends:
+            try:
+                cams = enumerate_cameras(api)
+            except Exception:
+                continue
+            for c in cams:
+                key = (c.name, getattr(c, "path", None))
+                if _is_own_output(c.name) or key in seen:
+                    continue
+                seen.add(key)
+                idx = c.index if api != cv2.CAP_ANY else c.index
+                out.append({"id": f"{tag}:{idx}" if tag != "any" else str(idx), "name": c.name})
+            if out:
+                break  # prefer the first backend that reports cameras (MSMF, OpenCV's default)
+        if out:
+            return out
+    except ImportError:
+        pass
+    # Fallback: probe indexes (slow, no names).
     backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
     for i in range(max_index):
         cap = cv2.VideoCapture(i, backend)
         ok = cap.isOpened()
         cap.release()
         if ok:
-            out.append({"id": str(i), "name": f"Camera {i}"})
+            out.append({"id": f"dshow:{i}" if sys.platform == "win32" else str(i), "name": f"Camera {i}"})
     return out
+
+
+def parse_device(dev) -> tuple[int | str, int | None]:
+    """'msmf:0' -> (0, CAP_MSMF); 'dshow:1' -> (1, CAP_DSHOW); '2' -> (2, None); other strings = path/URL."""
+    if dev in (None, ""):
+        return 0, None
+    if isinstance(dev, int):
+        return dev, None
+    s_ = str(dev)
+    for tag, api in (("msmf:", cv2.CAP_MSMF), ("dshow:", cv2.CAP_DSHOW)):
+        if s_.startswith(tag) and s_[len(tag):].isdigit():
+            return int(s_[len(tag):]), api
+    if s_.isdigit():
+        return int(s_), None
+    return s_, None
 
 
 class LatestFrameQueue:
@@ -80,17 +130,17 @@ class CameraCapture:
     def _open(self):
         if os.environ.get("AVATAR_LIVE_FAULT") == "device":
             raise CameraUnavailable("fault injection: camera device lost")
-        dev = self.device if self.device not in (None, "") else 0
-        if isinstance(dev, str) and dev.isdigit():
-            dev = int(dev)
-        if isinstance(dev, int) and sys.platform == "win32":
+        dev, api = parse_device(self.device)
+        if isinstance(dev, int) and api is not None:
+            cap = cv2.VideoCapture(dev, api)
+        elif isinstance(dev, int) and sys.platform == "win32":
             cap = cv2.VideoCapture(dev, cv2.CAP_MSMF)
             if not cap.isOpened():
                 cap = cv2.VideoCapture(dev, cv2.CAP_DSHOW)
         else:
             cap = cv2.VideoCapture(dev)
         if not cap.isOpened():
-            raise CameraUnavailable(f"cannot open camera {dev!r}")
+            raise CameraUnavailable(f"cannot open camera {self.device!r} (in use by another app or OBS source?)")
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.fps)

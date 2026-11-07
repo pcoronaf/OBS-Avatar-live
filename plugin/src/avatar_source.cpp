@@ -516,7 +516,8 @@ bool on_freeze(obs_properties_t *, obs_property_t *, void *data)
 
 bool on_refresh_devices(obs_properties_t *, obs_property_t *, void *data)
 {
-	static_cast<AvatarSource *>(data)->ctl->request_devices();
+	// Wait (bounded) for the engine's answer so the redrawn lists contain the devices.
+	static_cast<AvatarSource *>(data)->ctl->refresh_devices(4000);
 	return true;
 }
 

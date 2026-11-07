@@ -45,7 +45,7 @@ class MicrophoneCapture:
         try:
             import sounddevice as sd
         except Exception as exc:  # pragma: no cover - depends on host
-            raise AudioUnavailable("sounddevice is not installed (pip install avatar-engine[audio])") from exc
+            raise AudioUnavailable(f"microphone support unavailable: {exc}") from exc
         self._sd = sd
         self.callback = callback
         self.sample_rate = sample_rate

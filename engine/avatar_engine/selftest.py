@@ -92,7 +92,16 @@ def run() -> tuple[bool, dict]:
 
         assert not cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml").empty()
 
-    for name, fn in (("config", t_config), ("frame_ring", t_ring), ("onnxruntime_cpu", t_onnxruntime),
+    def t_audio_backend():
+        import sounddevice  # PortAudio must be bundled; device enumeration may be empty on CI
+
+        sounddevice.query_devices()
+
+    def t_camera_enum():
+        from avatar_engine.vision.capture import list_video_devices  # noqa: F401
+        import cv2_enumerate_cameras  # noqa: F401
+
+    for name, fn in (("audio_backend", t_audio_backend), ("camera_enumeration", t_camera_enum), ("config", t_config), ("frame_ring", t_ring), ("onnxruntime_cpu", t_onnxruntime),
                      ("rig2d", t_rig), ("visemes", t_visemes), ("opencv_haar", t_haar)):
         step(name, fn)
     return ok, report

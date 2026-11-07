@@ -47,9 +47,10 @@ struct ControllerStatus {
 	std::string fallback_reason;
 	std::string engine_version;
 	std::string provider;
-	json::Value metrics; // last Metrics object (PROTOCOL.md §4), null if none
-	json::Value devices; // last list_devices reply, null if none
-	json::Value engines; // engines advertised by hello
+	json::Value metrics;          // last Metrics object (PROTOCOL.md §4), null if none
+	json::Value devices;          // last list_devices reply, null if none
+	uint64_t devices_version = 0; // bumped on every list_devices reply
+	json::Value engines;          // engines advertised by hello
 	bool engine_alive = false;
 	bool connected = false;
 	bool session_wanted = false;
@@ -82,6 +83,8 @@ public:
 	void freeze_neutral(bool enabled);
 	void set_quality(const json::Value &payload);
 	void request_devices();
+	// Requests the device list and waits (bounded) for the reply; true if it arrived.
+	bool refresh_devices(uint32_t timeout_ms);
 	// Profile operations launch the engine if needed and run once connected.
 	void create_profile(const json::Value &payload, ResultFn cb);
 	void delete_profile(const std::string &profile_id, ResultFn cb);

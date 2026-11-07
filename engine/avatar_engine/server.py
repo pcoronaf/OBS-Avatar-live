@@ -11,11 +11,13 @@ import time
 from typing import Any
 
 from avatar_engine import PROTOCOL_VERSION, __version__, engine_factory, frame_ring as fr, ipc, protocol
+from avatar_engine.audio.capture import AudioUnavailable
 from avatar_engine.config import ConfigError
 from avatar_engine.engines.base import EngineUnavailable
 from avatar_engine.overlay import DisclosureLabel, status_frame
 from avatar_engine.privacy import profile_store
 from avatar_engine.privacy.consent import ConsentError
+from avatar_engine.vision.capture import CameraUnavailable
 
 log = logging.getLogger("avatar_engine.server")
 
@@ -107,6 +109,8 @@ class EngineServer:
             return protocol.reply_error(mid, "invalid_request", str(exc))
         except EngineUnavailable as exc:
             return protocol.reply_error(mid, "engine_unavailable", str(exc))
+        except (AudioUnavailable, CameraUnavailable) as exc:
+            return protocol.reply_error(mid, "device_unavailable", str(exc))
         except Exception as exc:  # pragma: no cover - defensive
             log.exception("request %s failed", t)
             return protocol.reply_error(mid, "internal", f"{type(exc).__name__}: {exc}")

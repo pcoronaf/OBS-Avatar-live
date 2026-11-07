@@ -13,10 +13,11 @@ dependencies = [
   "numpy>=1.24",
   "onnxruntime>=1.17",
   "opencv-python-headless>=4.8,<5",  # 5.x drops the bundled Haar cascades
+  "sounddevice>=0.4.6",  # microphone (PortAudio, WASAPI shared mode)
+  "cv2-enumerate-cameras>=1.1",  # camera names for the device list (MIT)
 ]
 
 [project.optional-dependencies]
-audio = ["sounddevice>=0.4.6"]
 openvino = ["onnxruntime-openvino>=1.17"]
 directml = ["onnxruntime-directml>=1.17"]
 system = ["psutil>=5.9"]
