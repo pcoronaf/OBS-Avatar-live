@@ -1,0 +1,163 @@
+// Avatar Live control protocol — schema reference (protocol v1).
+//
+// IMPORTANT: the v1 wire format is NOT protobuf. It is a u32 little-endian length
+// prefix followed by a UTF-8 JSON object (see docs/PROTOCOL.md, the source of truth).
+// This file mirrors those messages for optional external tooling (e.g. a future gRPC
+// diagnostics interface). Field names match the JSON keys. Raw video frames never
+// travel over this channel; they use the shared-memory ring.
+
+syntax = "proto3";
+
+package avatarlive.v1;
+
+import "google/protobuf/struct.proto";
+
+option csharp_namespace = "AvatarLive.V1";
+
+// ---------- Envelope ----------
+
+message Envelope {
+  uint32 v = 1;           // always 1
+  uint64 id = 2;          // >0 for requests/replies, 0 for events
+  string type = 3;        // request type, "reply" or "event"
+  string event = 4;       // set when type == "event"
+  bool ok = 5;            // set when type == "reply"
+  ErrorInfo error = 6;    // set when ok == false
+  google.protobuf.Struct payload = 7;
+}
+
+message ErrorInfo {
+  string code = 1;        // e.g. "unauthorized", "invalid_config", "consent_required", "engine_error"
+  string message = 2;
+  bool recoverable = 3;
+}
+
+// ---------- Requests ----------
+
+message HelloRequest {
+  string auth_token = 1;
+  string client = 2;            // "obs-avatar-live"
+  string client_version = 3;
+  uint32 protocol_version = 4;  // 1
+}
+
+message FrameRingInfo {
+  string name = 1;
+  string event_name = 2;
+  uint32 slot_count = 3;
+  uint32 max_width = 4;
+  uint32 max_height = 5;
+}
+
+message HelloReply {
+  string engine_version = 1;
+  uint32 protocol_version = 2;
+  repeated string engines = 3;
+  FrameRingInfo frame_ring = 4;
+}
+
+message PingReply { uint64 now_ns = 1; }
+
+message Device { string id = 1; string name = 2; }
+message ListDevicesReply { repeated Device video = 1; repeated Device audio = 2; }
+
+message ProfileSummary { string profile_id = 1; string display_name = 2; string created_at = 3; }
+message ListProfilesReply { repeated ProfileSummary profiles = 1; }
+
+message Consent {
+  bool rights_confirmed = 1;
+  bool subject_is_self = 2;
+  optional string third_party_consent_reference = 3;
+}
+
+message CreateProfileRequest {
+  string photo_path = 1;
+  string display_name = 2;
+  Consent consent = 3;
+}
+message CreateProfileReply { string profile_id = 1; repeated string warnings = 2; }
+
+message DeleteProfileRequest { string profile_id = 1; }
+
+// start_session payload = full config object (contracts/config.schema.json).
+message StartSessionRequest { google.protobuf.Struct config = 1; }
+message StartSessionReply {
+  string session_id = 1;
+  uint64 generation_id = 2;
+  string engine = 3;
+  string provider = 4;
+}
+
+message FreezeNeutralRequest { bool enabled = 1; }
+
+message SetExpressionRequest {
+  string expression_id = 1;
+  double intensity = 2;
+  uint32 duration_ms = 3;
+}
+
+message SetQualityRequest {
+  optional string profile = 1;
+  optional uint32 cpu_threads = 2;
+  optional uint32 detection_interval = 3;
+  optional bool enhancement = 4;
+}
+
+// stop_session, pause, resume, get_metrics, list_devices, list_profiles, ping, shutdown: empty payload.
+message Empty {}
+
+// ---------- Events ----------
+
+message StateEvent {
+  string state = 1;   // idle|starting|running|paused|degraded|error|stopped
+  string detail = 2;
+}
+
+message FallbackEvent { string from = 1; string to = 2; string reason = 3; }
+
+// ---------- Metrics ----------
+
+message Metrics {
+  string engine = 1;
+  string state = 2;
+  optional string execution_provider_selected = 3;
+  optional string provider_device = 4;
+  optional double face_swap_unique_fps = 5;
+  optional double inference_fps = 6;
+  double output_fps = 7;
+  optional double repeated_frame_pct = 8;
+  uint64 dropped_frames = 9;
+  optional double capture_to_output_p50_ms = 10;
+  optional double capture_to_output_p95_ms = 11;
+  map<string, double> stage_p95_ms = 12;
+  optional double cpu_utilization_pct = 13;
+  optional double ram_mb = 14;
+  optional string fallback_reason = 15;
+  optional string benchmark_timestamp = 16;
+  int32 quality_level = 17;
+  bool synthetic_label = 18;   // always true
+}
+
+// ---------- Shared-memory frame descriptor (documentation only) ----------
+
+enum PixelFormat {
+  PIXEL_FORMAT_UNSPECIFIED = 0;
+  PIXEL_FORMAT_BGRA8 = 1;
+}
+
+message FrameDescriptor {
+  string session_id = 1;
+  uint64 sequence = 2;
+  uint64 timestamp_ns = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  uint32 stride = 6;
+  PixelFormat pixel_format = 7;
+  uint32 memory_slot = 8;
+  uint64 generation_id = 9;
+  bool synthetic_label = 10;      // must be true
+  bool repeated = 11;
+  bool degraded = 12;
+  bool paused = 13;
+  uint32 processing_latency_us = 14;
+}

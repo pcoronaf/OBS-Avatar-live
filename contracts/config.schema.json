@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pcoronaf/OBS-Avatar-live/contracts/config.schema.json",
+  "title": "Avatar Live session configuration",
+  "type": "object",
+  "required": ["schema_version", "engine", "profile_id", "drive_mode"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 2 },
+    "engine": {
+      "enum": ["lite_cpu_audio", "lite_cpu_swap", "lite_adaptive", "accelerated_swap", "synthetic_head"]
+    },
+    "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "drive_mode": { "enum": ["audio", "webcam", "synthetic"] },
+    "user_profile": {
+      "enum": ["auto", "cpu_only", "intel_optimized", "max_performance", "low_power"],
+      "default": "auto"
+    },
+    "video_input": { "type": ["string", "null"], "description": "Camera index or device id" },
+    "audio_input": { "type": ["string", "null"], "description": "Microphone device id/name; null = system default" },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 160, "maximum": 1920, "default": 1280 },
+        "height": { "type": "integer", "minimum": 120, "maximum": 1080, "default": 720 },
+        "fps": { "type": "integer", "minimum": 5, "maximum": 60, "default": 30 },
+        "background": { "enum": ["photo", "solid", "transparent"], "default": "photo" },
+        "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#202020" },
+        "zoom": { "type": "number", "minimum": 0.5, "maximum": 3.0, "default": 1.0 },
+        "offset_x": { "type": "number", "minimum": -1.0, "maximum": 1.0, "default": 0.0 },
+        "offset_y": { "type": "number", "minimum": -1.0, "maximum": 1.0, "default": 0.0 }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "enum": ["auto", "cpu", "openvino", "directml", "cuda"], "default": "auto" },
+        "provider_priority": {
+          "type": "array",
+          "items": { "enum": ["openvino", "directml", "cpu", "cuda"] },
+          "default": ["openvino", "directml", "cpu"]
+        },
+        "cpu_only": { "type": "boolean", "default": false },
+        "startup_benchmark": { "type": "boolean", "default": true },
+        "benchmark_duration_seconds": { "type": "number", "minimum": 1, "maximum": 60, "default": 8 },
+        "max_end_to_end_latency_ms": { "type": "number", "minimum": 50, "maximum": 2000, "default": 250 },
+        "minimum_unique_swap_fps": { "type": "number", "minimum": 0.5, "maximum": 60, "default": 5 },
+        "max_threads": { "type": "integer", "minimum": 1, "maximum": 64, "default": 4 },
+        "input_face_size": { "type": "integer", "enum": [128, 256, 512], "default": 256 },
+        "detector_size": { "type": "integer", "enum": [320, 480, 640], "default": 640 },
+        "detection_every_n_frames": { "type": "integer", "minimum": 1, "maximum": 60, "default": 6 },
+        "frame_queue_size": { "type": "integer", "minimum": 1, "maximum": 8, "default": 2 },
+        "capture_width": { "type": "integer", "default": 640 },
+        "capture_height": { "type": "integer", "default": 480 },
+        "enhancement": { "type": "boolean", "default": false },
+        "adaptive_quality": { "type": "boolean", "default": true },
+        "cpu_budget_pct": { "type": "number", "minimum": 5, "maximum": 100, "default": 60 }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sample_rate_hz": { "const": 16000, "default": 16000 },
+        "frame_ms": { "enum": [10, 20, 30], "default": 20 },
+        "vad_enabled": { "type": "boolean", "default": true },
+        "sensitivity": { "type": "number", "minimum": 0.1, "maximum": 5.0, "default": 1.0 },
+        "mouth_delay_ms": { "type": "number", "minimum": 0, "maximum": 300, "default": 60 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "local_only": { "const": true, "default": true },
+        "store_audio": { "type": "boolean", "default": false },
+        "store_video": { "type": "boolean", "default": false },
+        "disclosure_overlay": { "const": true, "default": true },
+        "disclosure_text": { "type": "string", "default": "Avatar generado por IA" },
+        "disclosure_position": { "enum": ["top_left", "top_right", "bottom_left", "bottom_right"], "default": "bottom_left" },
+        "disclosure_scale": { "type": "number", "minimum": 1.0, "maximum": 4.0, "default": 1.0 }
+      }
+    },
+    "stale_frame_ms": { "type": "number", "minimum": 100, "maximum": 5000, "default": 500 }
+  }
+}

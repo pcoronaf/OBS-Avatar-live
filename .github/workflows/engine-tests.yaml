@@ -1,0 +1,44 @@
+name: Engine Tests
+
+on:
+  push:
+    paths:
+      - 'engine/**'
+      - 'tests/**'
+      - 'contracts/**'
+      - '.github/workflows/engine-tests.yaml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'tests/**'
+      - 'contracts/**'
+      - '.github/workflows/engine-tests.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: engine/pyproject.toml
+      - name: Install PortAudio (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2
+      - name: Install engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "engine[dev]"
+      - name: Run tests
+        run: pytest -q tests/unit tests/integration

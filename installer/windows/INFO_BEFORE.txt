@@ -1,0 +1,21 @@
+OBS Avatar Live / Avatar generado por IA
+
+ES:
+- Este complemento genera un avatar SINTETICO. Cada cuadro lleva la etiqueta visible
+  "Avatar generado por IA", que no se puede desactivar.
+- Use solo fotos propias o con consentimiento verificable del titular.
+- No lo use para superar verificaciones de identidad, pruebas de vida (liveness), KYC
+  ni para suplantar a otra persona.
+- Todo el procesamiento es local. No se instala ningun driver de camara; la salida usa
+  OBS Virtual Camera.
+- No se incluyen modelos de face swap. Si los agrega, usted es responsable de cumplir sus
+  licencias (muchos son solo para uso no comercial).
+
+EN:
+- This plugin produces a SYNTHETIC avatar. Every frame carries a visible, non-removable
+  "AI-generated avatar" label.
+- Only use photos of yourself or of people who gave verifiable consent.
+- Do not use it to defeat identity verification, liveness, KYC or to impersonate anyone.
+- Processing is local only. No camera driver is installed; output goes through OBS Virtual Camera.
+- No face-swap models are included. If you add some, you are responsible for their licenses
+  (many are non-commercial only).

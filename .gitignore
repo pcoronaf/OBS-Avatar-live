@@ -1,0 +1,44 @@
+# Exclude everything
+/*
+
+# Except for default project files
+!/.github
+!/build-aux
+!/cmake
+!/data
+!/src
+!.clang-format
+!.gersemirc
+!.gitignore
+!buildspec.json
+!CMakeLists.txt
+!CMakePresets.json
+!LICENSE
+!README.md
+!THIRD_PARTY_NOTICES.md
+!/plugin
+!/engine
+!/tests
+!/docs
+!/contracts
+!/models
+!/installer
+
+# Python / build outputs
+__pycache__/
+*.egg-info/
+.pytest_cache/
+/build_*/
+/release/
+installer/windows/dist/
+installer/windows/build/
+installer/windows/Output/
+
+# Exclude lock files
+*.lock.json
+
+# Exclude macOS legacy resource forks
+.DS_Store
+
+# Exclude CMake build number cache
+/cmake/.CMakeBuildNumber
