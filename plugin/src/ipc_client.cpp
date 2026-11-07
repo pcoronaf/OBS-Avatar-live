@@ -31,10 +31,16 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #else
 #include <cerrno>
 #include <cstdlib>
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#ifdef MSG_NOSIGNAL
+static constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+static constexpr int kSendFlags = 0; // macOS: SO_NOSIGPIPE is set on the socket instead
+#endif
 #endif
 
 namespace avatar {
@@ -155,12 +161,18 @@ bool IpcClient::connect(const std::string &session, uint32_t timeout_ms, unsigne
 	addr.sun_family = AF_UNIX;
 	std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
 	for (;;) {
-		int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+		// SOCK_CLOEXEC / MSG_NOSIGNAL are not available on macOS: set the equivalents per socket.
+		int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
 		if (fd < 0) {
 			if (err)
 				*err = "socket() failed";
 			return false;
 		}
+		::fcntl(fd, F_SETFD, FD_CLOEXEC);
+#ifdef SO_NOSIGPIPE
+		int one = 1;
+		::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
 		if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0) {
 			fd_ = fd;
 			break;
@@ -301,7 +313,7 @@ bool IpcClient::write_message(const std::string &body)
 #else
 	size_t off = 0;
 	while (off < frame.size()) {
-		ssize_t n = ::send(fd_, frame.data() + off, frame.size() - off, MSG_NOSIGNAL);
+		ssize_t n = ::send(fd_, frame.data() + off, frame.size() - off, kSendFlags);
 		if (n < 0 && errno == EINTR)
 			continue;
 		if (n <= 0)
