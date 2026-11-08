@@ -44,10 +44,47 @@ def make_fake_models(d: Path) -> dict:
 def fake_pipeline_factory(detector):
     from avatar_engine.engines import swap_pipeline as sp
 
-    def factory(candidate, models, threads, detect_every=6, detector_size=640):
+    def factory(candidate, models, threads, detect_every=6, detector_size=640, options=None):
         rec = sp.Recognizer(sp.make_session(models["arcface_recognition"], candidate, threads))
         sw = sp.Swapper(sp.make_session(models["inswapper_compatible_swapper"], candidate, threads),
                         models["inswapper_compatible_swapper"])
         return sp.SwapPipeline(detector, rec, sw, detect_every)
+
+    return factory
+
+
+def make_fake_dfm(path: Path, res: int = 224, morph: bool = False) -> Path:
+    """DeepFaceLive-style DFM stand-in: celeb face = 1 - input, masks = 0.9 (tests only)."""
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+
+    one = numpy_helper.from_array(np.array(1.0, np.float32), "one")
+    m = numpy_helper.from_array(np.full((1, res, res, 1), 0.9, np.float32), "mask_c")
+    nodes = [helper.make_node("Sub", ["one", "in_face:0"], ["inv"]),
+             helper.make_node("Identity", ["mask_c"], ["out_face_mask:0"]),
+             helper.make_node("Identity", ["mask_c"], ["out_celeb_face_mask:0"])]
+    inputs = [helper.make_tensor_value_info("in_face:0", TensorProto.FLOAT, [1, res, res, 3])]
+    if morph:
+        inputs.append(helper.make_tensor_value_info("morph_value:0", TensorProto.FLOAT, [1]))
+        nodes += [helper.make_node("Mul", ["inv", "morph_value:0"], ["out_celeb_face:0"])]
+    else:
+        nodes += [helper.make_node("Identity", ["inv"], ["out_celeb_face:0"])]
+    g = helper.make_graph(nodes, "dfm", inputs, [
+        helper.make_tensor_value_info("out_face_mask:0", TensorProto.FLOAT, [1, res, res, 1]),
+        helper.make_tensor_value_info("out_celeb_face:0", TensorProto.FLOAT, [1, res, res, 3]),
+        helper.make_tensor_value_info("out_celeb_face_mask:0", TensorProto.FLOAT, [1, res, res, 1])], [one, m])
+    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 13)], ir_version=8), str(path))
+    return path
+
+
+def fake_dfm_factory(detector):
+    from avatar_engine.engines.dfm_pipeline import DfmModel, DfmPipeline
+    from avatar_engine.engines.swap_pipeline import make_session
+
+    def factory(candidate, models, threads, detect_every=6, detector_size=640, options=None):
+        o = options or {}
+        return DfmPipeline(detector, DfmModel(make_session(models["dfm_face_model"], candidate, threads)),
+                           detect_every, o.get("dfm_coverage", 1.0), o.get("dfm_offset_y", 0.0),
+                           o.get("dfm_morph", 1.0))
 
     return factory

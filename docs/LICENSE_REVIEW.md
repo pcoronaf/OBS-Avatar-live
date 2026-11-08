@@ -64,3 +64,12 @@ Estado actual: **A**. Ninguna versión pública/comercial antes de completar est
 - `THIRD_PARTY_NOTICES.md`
 - `models/MODEL_MANIFEST.json`
 - SBOM (pendiente: generar con `pip-licenses`/CycloneDX en el build del motor)
+
+
+## Modelos `.dfm` aportados por el usuario
+
+- El soporte `.dfm` es una implementación propia del contrato de entrada/salida del formato (no se copia código de
+  DeepFaceLab/DeepFaceLive, que son GPL-3.0).
+- Los pesos los entrena el propio usuario: su uso depende de que el rostro sea suyo o tenga consentimiento
+  documentado (confirmación obligatoria en la fuente, `inference.dfm_rights_confirmed`). Los datos de entrenamiento y
+  cualquier modelo base usado al entrenar pueden tener sus propias condiciones; *a verificar por el usuario*.

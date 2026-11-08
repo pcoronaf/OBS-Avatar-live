@@ -97,7 +97,7 @@ def benchmark_candidate(candidate: ProviderCandidate, build: Callable[[ProviderC
         for f in frames[:3]:  # warm-up (graph compilation, allocations)
             pipe.process(f)
         if probe_crop is not None:
-            out_probe = pipe.swapper.run(probe_crop, pipe.source_latent)
+            out_probe = pipe.probe(probe_crop)
             if not np.all(np.isfinite(out_probe)):
                 raise RuntimeError("non-finite output")
             if reference is not None:

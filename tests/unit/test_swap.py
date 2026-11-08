@@ -84,7 +84,7 @@ def _swap_cfg(profile, **inf):
 
 
 def _resolver(fake_models):
-    return lambda: (dict(fake_models), {k: "h" + k for k in fake_models}, ["unaudited"])
+    return lambda *a: (dict(fake_models), {k: "h" + k for k in fake_models}, ["unaudited"])
 
 
 def test_lite_cpu_swap_engine_runs(profile, synthetic_face, fake_detector, fake_models):

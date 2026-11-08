@@ -154,6 +154,13 @@ def cmd_preview(a) -> int:
         user["video_input"] = a.video if a.video.isdigit() else "file:" + a.video
     if a.cpu_only:
         user["user_profile"] = "cpu_only"
+    if a.dfm:
+        if not a.i_have_rights:
+            print("--dfm requires --i-have-rights (model trained on your own face or with consent)", file=sys.stderr)
+            return 2
+        user.setdefault("inference", {}).update({"swap_model": "dfm", "dfm_model": os.path.abspath(a.dfm),
+                                                 "dfm_rights_confirmed": True, "dfm_coverage": a.dfm_coverage,
+                                                 "dfm_offset_y": a.dfm_offset_y})
     events = []
     s = Session(user, None, lambda n, p: events.append((n, p)))
     writer = None
@@ -245,6 +252,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--seconds", type=float, default=5.0)
     s.add_argument("--out", help="output .mp4 or .png")
     s.add_argument("--cpu-only", action="store_true")
+    s.add_argument("--dfm", help="DeepFaceLive/DeepFaceLab .dfm face model (webcam engines)")
+    s.add_argument("--i-have-rights", action="store_true", help="confirm the DFM depicts you or a consenting person")
+    s.add_argument("--dfm-coverage", type=float, default=1.0)
+    s.add_argument("--dfm-offset-y", type=float, default=0.0)
     s.set_defaults(fn=cmd_preview)
 
     s = sub.add_parser("selftest", help="offline checks of config, IPC, frame ring and the audio rig")

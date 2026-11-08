@@ -54,6 +54,23 @@ avatar-engine models acknowledge yunet_face_detector
 Si el manifiesto fija un `sha256`, el archivo debe coincidir exactamente o el motor no arranca.
 `Lite CPU Audio` no necesita ninguno de estos modelos (usa la cascada Haar de OpenCV si falta YuNet al crear el perfil).
 
+### Modelo entrenado con su rostro (.dfm)
+Si entrenó un modelo con DeepFaceLab o DeepFaceLive (archivo `.dfm`), puede usarlo en lugar de `recognition.onnx` +
+`swapper.onnx`; solo necesita además `face_detection_yunet_2023mar.onnx`.
+
+1. En la fuente Avatar Live → **Modelo de rostro** → *Modelo entrenado (.dfm)*.
+2. Elija el archivo `.dfm` y marque la confirmación de que el modelo es de su propio rostro (o tiene el
+   consentimiento documentado de la persona).
+3. Motor: *Lite Adaptive* (recomendado) o *Lite CPU Face Swap*; seleccione la webcam. El perfil con foto sigue siendo
+   necesario (consentimiento, pose neutra y benchmark).
+4. Si la cara aparece desplazada o con tamaño incorrecto, ajuste **Cobertura** (≈1,0 para modelos *whole face*,
+   ≈0,75 para modelos *head*) y **Desplazamiento vertical**.
+
+La alineación se aproxima desde 5 puntos (DeepFaceLab usa 68), por lo que la calidad puede ser algo menor que en
+DeepFaceLive. Los modelos DFM (224–320 px) son más pesados que inswapper: sin GPU dedicada espere menos FPS únicos;
+el benchmark de arranque lo medirá en su equipo. Prueba sin OBS:
+`avatar-engine preview --engine lite_adaptive --profile <id> --video 0 --dfm C:\ruta\yo.dfm --i-have-rights --out prueba.mp4`
+
 ### Datos locales
 ```
 %LOCALAPPDATA%\AvatarLive\

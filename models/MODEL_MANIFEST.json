@@ -6,8 +6,14 @@
       "id": "yunet_face_detector",
       "role": "face_detection",
       "file": "face_detection_yunet_2023mar.onnx",
-      "required_by": ["lite_cpu_swap", "lite_adaptive", "accelerated_swap"],
-      "optional_for": ["lite_cpu_audio"],
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "optional_for": [
+        "lite_cpu_audio"
+      ],
       "source_url": "https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet",
       "version": "2023mar",
       "sha256": null,
@@ -22,7 +28,11 @@
       "id": "arcface_recognition",
       "role": "face_recognition_embedding",
       "file": "recognition.onnx",
-      "required_by": ["lite_cpu_swap", "lite_adaptive", "accelerated_swap"],
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
       "source_url": null,
       "version": null,
       "sha256": null,
@@ -37,7 +47,11 @@
       "id": "inswapper_compatible_swapper",
       "role": "face_swap",
       "file": "swapper.onnx",
-      "required_by": ["lite_cpu_swap", "lite_adaptive", "accelerated_swap"],
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
       "source_url": null,
       "version": null,
       "sha256": null,
@@ -47,6 +61,26 @@
       "bundled": false,
       "purpose": "Swap the aligned 128x128 target face using the source identity latent.",
       "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C)."
+    },
+    {
+      "id": "dfm_face_model",
+      "role": "face_swap_trained",
+      "file": null,
+      "required_by": [],
+      "optional_for": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "user-supplied; weights trained by the user. DeepFaceLab/DeepFaceLive code is GPL-3.0 (not included)",
+      "license_url": "https://github.com/iperov/DeepFaceLive",
+      "commercial_use": "unknown",
+      "bundled": false,
+      "purpose": "Face model trained on one specific face; replaces the webcam face without a source photo.",
+      "notes": "Selected by path in the source properties (inference.swap_model = dfm). Requires the user's confirmation that the model depicts them or a consenting person. Input in_face:0 NHWC BGR [0,1]; outputs out_face_mask:0, out_celeb_face:0, out_celeb_face_mask:0; optional morph_value:0."
     },
     {
       "id": "face_enhancer",

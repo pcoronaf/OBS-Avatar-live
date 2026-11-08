@@ -79,6 +79,11 @@ Detalles: [docs/INSTALL_WINDOWS.md](docs/INSTALL_WINDOWS.md).
 
 La fuente Avatar Live es **solo de video**: nunca envía audio a OBS. La aplicación de reuniones usa el micrófono real directamente. Solo el perfil *Lite CPU Audio* lee el micrófono (en modo compartido, sin grabar ni reenviar) para mover la boca; los perfiles con webcam no lo abren. En *Micrófono* puede elegir **Sin micrófono**: el motor no abre ningún dispositivo de audio y el avatar solo parpadea y mueve la cabeza.
 
+### Modelos `.dfm` (DeepFaceLive / DeepFaceLab)
+
+Los motores con webcam aceptan también un modelo `.dfm` entrenado con su propio rostro, en lugar del modelo
+*inswapper* + foto. Pasos y limitaciones (alineación aproximada, mayor coste en CPU): [docs/INSTALL_WINDOWS.md](docs/INSTALL_WINDOWS.md).
+
 ## Privacidad, consentimiento y etiqueta
 
 - Consentimiento explícito al crear un perfil; si la foto es de un tercero se pide referencia de consentimiento.

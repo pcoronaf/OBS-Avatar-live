@@ -148,6 +148,12 @@ class SwapPipeline:
     def set_detection_interval(self, n: int) -> None:
         self.tracker.detect_every = max(1, n)
 
+    def probe(self, crop_bgr: np.ndarray) -> np.ndarray:
+        """Raw model output for a fixed crop (benchmark: compare each provider with the CPU)."""
+        if crop_bgr.shape[0] != self.swapper.size:
+            crop_bgr = cv2.resize(crop_bgr, (self.swapper.size, self.swapper.size))
+        return self.swapper.run(crop_bgr, self.source_latent)
+
     def process(self, frame: np.ndarray) -> SwapResult:
         if self.source_latent is None:
             raise RuntimeError("source identity not set")
@@ -174,8 +180,13 @@ class SwapPipeline:
 
 
 def build_pipeline(candidate: ProviderCandidate, models: dict[str, Path], threads: int,
-                   detection_every_n_frames: int = 6, detector_size: int = 640) -> SwapPipeline:
-    """`models` maps manifest ids (yunet_face_detector, arcface_recognition, inswapper_compatible_swapper) → path."""
+                   detection_every_n_frames: int = 6, detector_size: int = 640, options: dict | None = None):
+    """`models` maps manifest ids (yunet_face_detector, arcface_recognition, inswapper_compatible_swapper,
+    or dfm_face_model) → path. A DFM model selects the DeepFaceLive-style pipeline."""
+    if "dfm_face_model" in models:
+        from avatar_engine.engines.dfm_pipeline import build_dfm_pipeline
+
+        return build_dfm_pipeline(candidate, models, threads, detection_every_n_frames, detector_size, options)
     detector = FaceDetector(models.get("yunet_face_detector"), input_size=detector_size)
     if detector.backend != "yunet":
         raise ModelError("the face-swap engines need the YuNet detector model (landmarks for alignment)")

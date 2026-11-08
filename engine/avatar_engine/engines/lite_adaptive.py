@@ -91,7 +91,7 @@ class LiteAdaptiveEngine(LiteCpuSwapEngine):
 
     def _probe_crop(self, frames: list[np.ndarray]) -> np.ndarray | None:
         try:  # fixed crop from the profile landmarks, used to compare each EP against the CPU output
-            crop, _ = alignment.align(self._profile_img, self._profile_lm, 128)
+            crop, _ = alignment.align(self._profile_img, self._profile_lm, 256)
             return crop
         except Exception:
             return None

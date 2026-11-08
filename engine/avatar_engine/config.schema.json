@@ -56,7 +56,21 @@
         "capture_height": { "type": "integer", "default": 480 },
         "enhancement": { "type": "boolean", "default": false },
         "adaptive_quality": { "type": "boolean", "default": true },
-        "cpu_budget_pct": { "type": "number", "minimum": 5, "maximum": 100, "default": 60 }
+        "cpu_budget_pct": { "type": "number", "minimum": 5, "maximum": 100, "default": 60 },
+        "swap_model": {
+          "enum": ["inswapper", "dfm"],
+          "default": "inswapper",
+          "description": "inswapper: identity from the profile photo; dfm: DeepFaceLive/DeepFaceLab model trained on one face"
+        },
+        "dfm_model": { "type": ["string", "null"], "description": "Absolute path to the .dfm file (swap_model = dfm)" },
+        "dfm_rights_confirmed": {
+          "type": "boolean",
+          "default": false,
+          "description": "User confirms the DFM model was trained on their own face or with documented consent"
+        },
+        "dfm_coverage": { "type": "number", "minimum": 0.5, "maximum": 1.6, "default": 1.0 },
+        "dfm_offset_y": { "type": "number", "minimum": -0.3, "maximum": 0.3, "default": 0.0 },
+        "dfm_morph": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 1.0 }
       }
     },
     "audio": {

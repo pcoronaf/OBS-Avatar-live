@@ -26,8 +26,27 @@ from avatar_engine.vision.capture import LatestFrameQueue
 SWAP_MODELS = ("yunet_face_detector", "arcface_recognition", "inswapper_compatible_swapper")
 
 
-def resolve_models() -> tuple[dict[str, Path], dict[str, str], list[str]]:
+DFM_MODELS = ("yunet_face_detector", "dfm_face_model")
+
+
+def resolve_models(config: dict | None = None) -> tuple[dict[str, Path], dict[str, str], list[str]]:
     paths_, hashes, warnings = {}, {}, []
+    inf = (config or {}).get("inference", {})
+    if inf.get("swap_model") == "dfm":
+        from avatar_engine.engines.dfm_pipeline import validate_dfm_path
+
+        if inf.get("dfm_rights_confirmed") is not True:
+            raise EngineUnavailable("confirm that the DFM model was trained on your own face or with the "
+                                    "documented consent of the person it depicts")
+        try:
+            dfm = validate_dfm_path(inf.get("dfm_model") or "")
+            det = manifest.resolve("yunet_face_detector")
+        except manifest.ModelError as exc:
+            raise EngineUnavailable(str(exc)) from exc
+        paths_ = {"yunet_face_detector": det.path, "dfm_face_model": dfm}
+        hashes = {"yunet_face_detector": det.sha256, "dfm_face_model": manifest.sha256_file(dfm)}
+        warnings = [det.warning] if det.warning else []
+        return paths_, hashes, warnings
     for mid in SWAP_MODELS:
         try:
             r = manifest.resolve(mid)
@@ -86,7 +105,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
     def initialize(self, config: dict[str, Any], capabilities: dict[str, Any] | None = None) -> EngineInfo:
         self.config = config
         inf = config["inference"]
-        self.models, self.model_hashes, self.warnings = self.model_resolver()
+        self.models, self.model_hashes, self.warnings = self.model_resolver(config)
         self.queue = LatestFrameQueue(inf.get("frame_queue_size", 2))
         base = QualitySettings(enhancement=False, detector_size=inf.get("detector_size", 640),
                                detection_every_n_frames=inf["detection_every_n_frames"],
@@ -105,7 +124,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
         s = self.controller.settings if self.controller else None
         pipe = self.pipeline_factory(candidate, self.models, inf["max_threads"],
                                      s.detection_every_n_frames if s else inf["detection_every_n_frames"],
-                                     s.detector_size if s else inf.get("detector_size", 640))
+                                     s.detector_size if s else inf.get("detector_size", 640), options=inf)
         if self._profile_img is not None:
             pipe.set_source(self._profile_img, None)
         return pipe

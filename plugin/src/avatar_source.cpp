@@ -526,6 +526,17 @@ bool on_refresh_status(obs_properties_t *, obs_property_t *, void *)
 	return true; // returning true rebuilds the properties view with fresh status
 }
 
+bool on_swap_model_changed(obs_properties_t *props, obs_property_t *, obs_data_t *settings)
+{
+	const bool dfm = strcmp(obs_data_get_string(settings, "swap_model"), "dfm") == 0;
+	for (const char *name : {"dfm_model", "dfm_rights", "dfm_coverage", "dfm_offset_y", "dfm_morph", "dfm_info"}) {
+		obs_property_t *p = obs_properties_get(props, name);
+		if (p)
+			obs_property_set_visible(p, dfm);
+	}
+	return true;
+}
+
 void add_device_list(obs_properties_t *grp, const char *name, const char *text, const json::Value &devices,
 		     bool allow_none = false)
 {
@@ -595,6 +606,22 @@ obs_properties_t *avatar_get_properties(void *data)
 	add_device_list(eng, "audio_input", T_("Input.Microphone"), st.devices["audio"], true);
 	obs_properties_add_button2(eng, "refresh_devices", T_("Input.RefreshDevices"), on_refresh_devices, s);
 	obs_properties_add_group(props, "grp_engine", T_("Group.Engine"), OBS_GROUP_NORMAL, eng);
+
+	// Face model for the webcam (face swap) engines
+	obs_properties_t *fm = obs_properties_create();
+	obs_property_t *fml = obs_properties_add_list(fm, "swap_model", T_("FaceModel.Type"), OBS_COMBO_TYPE_LIST,
+						      OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(fml, T_("FaceModel.Inswapper"), "inswapper");
+	obs_property_list_add_string(fml, T_("FaceModel.Dfm"), "dfm");
+	obs_property_set_modified_callback(fml, on_swap_model_changed);
+	obs_properties_add_path(fm, "dfm_model", T_("FaceModel.File"), OBS_PATH_FILE, "DeepFaceLive model (*.dfm)",
+				nullptr);
+	obs_properties_add_bool(fm, "dfm_rights", T_("FaceModel.Rights"));
+	obs_properties_add_float_slider(fm, "dfm_coverage", T_("FaceModel.Coverage"), 0.5, 1.6, 0.01);
+	obs_properties_add_float_slider(fm, "dfm_offset_y", T_("FaceModel.OffsetY"), -0.3, 0.3, 0.01);
+	obs_properties_add_float_slider(fm, "dfm_morph", T_("FaceModel.Morph"), 0.0, 1.0, 0.01);
+	obs_properties_add_text(fm, "dfm_info", T_("FaceModel.Info"), OBS_TEXT_INFO);
+	obs_properties_add_group(props, "grp_face_model", T_("Group.FaceModel"), OBS_GROUP_NORMAL, fm);
 
 	// Output framing
 	obs_properties_t *out = obs_properties_create();
@@ -676,6 +703,11 @@ void avatar_get_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "cpu_budget_pct", 60);
 	obs_data_set_default_int(settings, "max_threads", 4);
 	obs_data_set_default_int(settings, "stale_frame_ms", 500);
+	obs_data_set_default_string(settings, "swap_model", "inswapper");
+	obs_data_set_default_bool(settings, "dfm_rights", false);
+	obs_data_set_default_double(settings, "dfm_coverage", 1.0);
+	obs_data_set_default_double(settings, "dfm_offset_y", 0.0);
+	obs_data_set_default_double(settings, "dfm_morph", 1.0);
 	obs_data_set_default_string(settings, "disclosure_position", "bottom_left");
 	obs_data_set_default_double(settings, "disclosure_scale", 1.0);
 }
@@ -737,6 +769,17 @@ json::Value build_session_config(obs_data_t *settings)
 	if (user_profile == "low_power" && threads > 2)
 		threads = 2;
 	obs_data_set_int(inf, "max_threads", threads < 1 ? 1 : threads);
+	const char *swap_model = obs_data_get_string(settings, "swap_model");
+	if (swap_model && strcmp(swap_model, "dfm") == 0) {
+		obs_data_set_string(inf, "swap_model", "dfm");
+		obs_data_set_string(inf, "dfm_model", obs_data_get_string(settings, "dfm_model"));
+		obs_data_set_bool(inf, "dfm_rights_confirmed", obs_data_get_bool(settings, "dfm_rights"));
+		obs_data_set_double(inf, "dfm_coverage", obs_data_get_double(settings, "dfm_coverage"));
+		obs_data_set_double(inf, "dfm_offset_y", obs_data_get_double(settings, "dfm_offset_y"));
+		obs_data_set_double(inf, "dfm_morph", obs_data_get_double(settings, "dfm_morph"));
+	} else {
+		obs_data_set_string(inf, "swap_model", "inswapper");
+	}
 	obs_data_set_double(inf, "cpu_budget_pct", (double)obs_data_get_int(settings, "cpu_budget_pct"));
 	obs_data_set_obj(cfg, "inference", inf);
 	obs_data_release(inf);
