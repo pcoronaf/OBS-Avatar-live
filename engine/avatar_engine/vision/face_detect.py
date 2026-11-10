@@ -52,7 +52,12 @@ class FaceDetector:
     def __init__(self, model_path: str | Path | None = None, input_size: int = 320, score_threshold: float = 0.7):
         self.input_size = input_size
         self.score_threshold = score_threshold
-        model = Path(model_path) if model_path else paths.models_dir() / YUNET_FILE
+        if model_path:
+            model = Path(model_path)
+        else:
+            from avatar_engine.models.manifest import find_model_file
+
+            model = find_model_file(YUNET_FILE) or paths.models_dir() / YUNET_FILE
         self.backend = "haar"
         self._yunet = None
         if model.exists() and hasattr(cv2, "FaceDetectorYN"):

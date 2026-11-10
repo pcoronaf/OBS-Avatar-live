@@ -37,6 +37,8 @@ datas += collect_data_files("avatar_engine")
 datas += [
     (os.path.join(REPO, "contracts", "config.schema.json"), "contracts"),
     (os.path.join(REPO, "models", "MODEL_MANIFEST.json"), "models"),
+    # Redistributable models only (YuNet face detector, MIT) + their license texts.
+    (os.path.join(REPO, "models", "bundled"), os.path.join("models", "bundled")),
 ]
 
 a = Analysis(

@@ -33,6 +33,26 @@ def _candidate_manifest_paths() -> list[Path]:
     return cands
 
 
+def bundled_dirs() -> list[Path]:
+    """Folders holding models shipped with the engine (only redistributable ones, e.g. YuNet/MIT)."""
+    here = Path(__file__).resolve()
+    out = []
+    if getattr(sys, "frozen", False):
+        out.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "models" / "bundled")
+        out.append(Path(sys.executable).parent / "models" / "bundled")
+    out.append(here.parents[3] / "models" / "bundled")  # source tree
+    return out
+
+
+def find_model_file(filename: str, models_dir: Path | None = None) -> Path | None:
+    """User models directory first (lets users override), then the bundled copy."""
+    for d in [models_dir or paths.models_dir(), *bundled_dirs()]:
+        p = d / filename
+        if p.is_file():
+            return p
+    return None
+
+
 def load_manifest(path: Path | None = None) -> dict:
     for p in ([path] if path else _candidate_manifest_paths()):
         if p and p.exists():
@@ -82,7 +102,7 @@ def resolve(model_id: str, manifest: dict | None = None, models_dir: Path | None
     entry = next((m for m in manifest.get("models", []) if m.get("id") == model_id), None)
     if entry is None or not entry.get("file"):
         raise ModelError(f"model {model_id!r} is not declared in MODEL_MANIFEST.json")
-    path = models_dir / entry["file"]
+    path = find_model_file(entry["file"], models_dir) or models_dir / entry["file"]
     if not path.exists():
         raise ModelError(f"model file missing: {path} (see docs/INSTALL_WINDOWS.md; weights are not bundled)")
     digest = sha256_file(path)
