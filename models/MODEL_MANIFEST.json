@@ -1,0 +1,101 @@
+{
+  "manifest_version": 1,
+  "notes": "No weights are bundled. sha256 stays null until the artifact is audited (docs/LICENSE_REVIEW.md). Files are expected in %LOCALAPPDATA%\\AvatarLive\\models\\.",
+  "models": [
+    {
+      "id": "yunet_face_detector",
+      "role": "face_detection",
+      "file": "face_detection_yunet_2023mar.onnx",
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "optional_for": [
+        "lite_cpu_audio"
+      ],
+      "source_url": "https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet",
+      "version": "2023mar",
+      "sha256": null,
+      "license": "MIT",
+      "license_url": "https://github.com/opencv/opencv_zoo/blob/main/models/face_detection_yunet/LICENSE",
+      "commercial_use": "unknown",
+      "bundled": false,
+      "purpose": "Face bounding box and 5 landmarks for alignment and tracking.",
+      "notes": "MIT declared; verify before marking commercial_use=yes. Haar cascade from opencv-python is the fallback for profile creation."
+    },
+    {
+      "id": "arcface_recognition",
+      "role": "face_recognition_embedding",
+      "file": "recognition.onnx",
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "user-supplied; InsightFace pretrained weights are non-commercial research only",
+      "license_url": "https://github.com/deepinsight/insightface#license",
+      "commercial_use": "unknown",
+      "bundled": false,
+      "purpose": "Identity embedding of the source photo (computed once per profile), input 112x112 aligned.",
+      "notes": "Placeholder. User must supply a model whose license permits their use and acknowledge it in the app."
+    },
+    {
+      "id": "inswapper_compatible_swapper",
+      "role": "face_swap",
+      "file": "swapper.onnx",
+      "required_by": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "user-supplied; InsightFace inswapper_128 is non-commercial research only",
+      "license_url": "https://github.com/deepinsight/insightface#license",
+      "commercial_use": "no",
+      "bundled": false,
+      "purpose": "Swap the aligned 128x128 target face using the source identity latent.",
+      "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C)."
+    },
+    {
+      "id": "dfm_face_model",
+      "role": "face_swap_trained",
+      "file": null,
+      "required_by": [],
+      "optional_for": [
+        "lite_cpu_swap",
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "user-supplied; weights trained by the user. DeepFaceLab/DeepFaceLive code is GPL-3.0 (not included)",
+      "license_url": "https://github.com/iperov/DeepFaceLive",
+      "commercial_use": "unknown",
+      "bundled": false,
+      "purpose": "Face model trained on one specific face; replaces the webcam face without a source photo.",
+      "notes": "Selected by path in the source properties (inference.swap_model = dfm). Requires the user's confirmation that the model depicts them or a consenting person. Input in_face:0 NHWC BGR [0,1]; outputs out_face_mask:0, out_celeb_face:0, out_celeb_face_mask:0; optional morph_value:0."
+    },
+    {
+      "id": "face_enhancer",
+      "role": "face_restoration",
+      "file": null,
+      "required_by": [],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "varies (e.g. GFPGAN Apache-2.0 code, CodeFormer S-Lab non-commercial)",
+      "license_url": null,
+      "commercial_use": "unknown",
+      "bundled": false,
+      "purpose": "Optional face restoration.",
+      "notes": "Disabled; not supported in v1 (inference.enhancement must stay false)."
+    }
+  ]
+}

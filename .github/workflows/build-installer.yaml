@@ -1,0 +1,104 @@
+name: Build Windows Installer
+
+# Builds AvatarLive-Setup-<version>-Lite.exe:
+#   plugin DLL (obs-plugintemplate build) + avatar-engine.exe (PyInstaller, Lite = CPU ONNX Runtime,
+#   no CUDA) + Inno Setup. The installer is uploaded as a workflow artifact; on a "v*" tag it is
+#   also attached to a GitHub Release. No face-swap model weights are included.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-installer-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    name: Installer (Windows, Lite)
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build plugin (obs-plugintemplate) 🧱
+        run: .github/scripts/Build-Windows.ps1 -Target x64 -Configuration RelWithDebInfo
+
+      - name: Locate plugin DLL
+        id: dll
+        run: |
+          $dll = Get-ChildItem -Path build_x64 -Recurse -Filter obs-avatar-live.dll |
+            Where-Object { $_.FullName -match 'RelWithDebInfo' } | Select-Object -First 1
+          if (-not $dll) { throw 'obs-avatar-live.dll not found under build_x64' }
+          Write-Host "Plugin DLL: $($dll.FullName)"
+          $rel = [IO.Path]::GetRelativePath((Get-Location).Path, $dll.DirectoryName)
+          "dir=$rel" >> $env:GITHUB_OUTPUT
+
+      - name: Build engine (PyInstaller, Lite) 🐍
+        run: installer/windows/build_engine.ps1 -Variant Lite -Backend cpu -Python python
+
+      - name: Install Inno Setup
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup not found at $iscc" }
+
+      - name: Build installer 📀
+        run: installer/windows/build_installer.ps1 -Variant Lite -PluginBuildDir "${{ steps.dll.outputs.dir }}"
+
+      - name: Collect installer
+        id: out
+        run: |
+          $exe = Get-ChildItem release -Filter 'AvatarLive-Setup-*-Lite.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'Installer not produced' }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File -Encoding ascii "$($exe.FullName).sha256"
+          Write-Host "$($exe.Name)  sha256=$hash  size=$([math]::Round($exe.Length / 1MB, 1)) MB"
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($exe.BaseName)" >> $env:GITHUB_OUTPUT
+          "### Installer`n``$($exe.Name)`` — SHA-256 ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload installer artifact 📡
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.out.outputs.name }}
+          path: |
+            release/AvatarLive-Setup-*-Lite.exe
+            release/AvatarLive-Setup-*-Lite.exe.sha256
+          if-no-files-found: error
+
+  release:
+    name: Attach to GitHub Release
+    needs: installer
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create release (draft) and upload installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --draft \
+            --title "Avatar Live ${GITHUB_REF_NAME}" \
+            --notes "Instalador Lite (CPU, sin GPU dedicada). No incluye modelos de face swap. Compilación no validada en hardware de referencia; ver docs/ACCEPTANCE_TESTS.md."
