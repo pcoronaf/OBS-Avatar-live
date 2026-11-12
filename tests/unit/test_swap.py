@@ -210,3 +210,45 @@ def test_camera_enumeration_runs_in_a_fresh_thread(monkeypatch):
     report = []
     capture.list_video_devices(max_index=1, report=report)
     assert report  # diagnostics always filled
+
+
+def test_original_upstream_file_names_are_accepted(tmp_path, monkeypatch, fake_models):
+    import shutil
+
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128.onnx")
+    shutil.copy(fake_models["arcface_recognition"], tmp_path / "w600k_r50.onnx")
+    res = manifest.acknowledge_present()
+    assert {m["id"] for m in res["acknowledged"]} == {"inswapper_compatible_swapper", "arcface_recognition"}
+    assert manifest.resolve("inswapper_compatible_swapper").path.name == "inswapper_128.onnx"
+    assert manifest.resolve("arcface_recognition").path.name == "w600k_r50.onnx"
+
+
+def test_acknowledge_reports_missing_models(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    res = manifest.acknowledge_present()
+    assert res["acknowledged"] == [] and {m["id"] for m in res["missing"]} >= {"arcface_recognition"}
+
+
+def test_status_hint_explains_missing_avatar(profile, synthetic_face, fake_detector, fake_models):
+    img, _, _ = synthetic_face
+    eng = LiteCpuSwapEngine(fake_pipeline_factory(fake_detector), _resolver(fake_models))
+    eng.initialize(_swap_cfg(profile), {})
+    eng.load_profile(profile)
+    assert "webcam" in eng.status_hint().lower()  # no frames yet
+    eng.frames_in, eng.frames_processed, eng.no_face_frames = 5, 5, 5
+    assert "rostro" in eng.status_hint()
+    eng.last_error = "RuntimeError: boom"
+    assert "boom" in eng.status_hint()
+
+
+def test_session_hint_prefers_camera_error(profile):
+    from avatar_engine.session import Session
+
+    class Cam:
+        error = "cannot open camera 'msmf:0'"
+
+    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id},
+                None, lambda n, p: None)
+    s.inputs.append(Cam())
+    assert s.hint().startswith("Webcam no disponible")

@@ -87,6 +87,7 @@ public:
 	bool refresh_devices(uint32_t timeout_ms);
 	// Profile operations launch the engine if needed and run once connected.
 	void create_profile(const json::Value &payload, ResultFn cb);
+	void acknowledge_models(ResultFn cb);
 	void delete_profile(const std::string &profile_id, ResultFn cb);
 
 	// Stops the supervisor and the engine. Bounded (~2 s worst case). Idempotent.

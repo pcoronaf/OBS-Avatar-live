@@ -43,7 +43,10 @@
       "bundled": false,
       "purpose": "Identity embedding of the source photo (computed once per profile), input 112x112 aligned.",
       "notes": "Placeholder. User must supply a model whose license permits their use and acknowledge it in the app.",
-      "user_hint": "Copy InsightFace's w600k_r50.onnx (from the buffalo_l pack) here and rename it to recognition.onnx, then run: avatar-engine models acknowledge arcface_recognition"
+      "user_hint": "Copy InsightFace's w600k_r50.onnx (from the buffalo_l pack) here (recognition.onnx is also accepted), then press 'Confirm model licenses' in the Avatar Live source.",
+      "file_aliases": [
+        "w600k_r50.onnx"
+      ]
     },
     {
       "id": "inswapper_compatible_swapper",
@@ -63,7 +66,10 @@
       "bundled": false,
       "purpose": "Swap the aligned 128x128 target face using the source identity latent.",
       "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C).",
-      "user_hint": "Copy inswapper_128.onnx (FP32, not the fp16 file) here and rename it to swapper.onnx, then run: avatar-engine models acknowledge inswapper_compatible_swapper"
+      "user_hint": "Copy inswapper_128.onnx (FP32, not the fp16 file) here (swapper.onnx is also accepted), then press 'Confirm model licenses' in the Avatar Live source.",
+      "file_aliases": [
+        "inswapper_128.onnx"
+      ]
     },
     {
       "id": "dfm_face_model",

@@ -190,6 +190,13 @@ bool EngineController::refresh_devices(uint32_t timeout_ms)
 	return false;
 }
 
+void EngineController::acknowledge_models(ResultFn cb)
+{
+	json::Value payload = json::Value::object();
+	payload.set("license_accepted", true);
+	enqueue([payload, cb](IpcClient &c) { c.send_request("acknowledge_models", payload, cb); }, true);
+}
+
 void EngineController::create_profile(const json::Value &payload, ResultFn cb)
 {
 	enqueue([payload, cb](IpcClient &c) { c.send_request("create_profile", payload, cb); }, true);

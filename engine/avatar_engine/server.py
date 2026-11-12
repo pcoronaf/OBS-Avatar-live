@@ -92,6 +92,7 @@ class EngineServer:
             s = self.session
             if s is not None and self.conn is not None:
                 try:
+                    s.publish_hint()
                     self.emit("metrics", s.metrics())
                 except Exception as exc:  # never let metrics kill the server
                     log.debug("metrics failed: %s", exc)
@@ -134,6 +135,15 @@ class EngineServer:
                 raise ValueError("stop the session before deleting its profile")
             profile_store.delete_profile(p.get("profile_id", ""), self.profile_root)
             return {}
+        if t == "acknowledge_models":
+            if p.get("license_accepted") is not True:
+                raise ValueError("confirm that you have the right to use the models under their licenses")
+            from avatar_engine.models import manifest
+
+            res = manifest.acknowledge_present()
+            log.info("models acknowledged by user: %s; missing: %s", [m["id"] for m in res["acknowledged"]],
+                     [m["id"] for m in res["missing"]])
+            return res
         if t == "start_session":
             return self._start(p)
         if t == "stop_session":
@@ -173,11 +183,13 @@ class EngineServer:
             try:
                 result = s.start()
             except Exception as exc:
+                log.error("session start failed: %s", exc)
                 s.stop()
                 self._idle_detail = "Error al iniciar"
                 self.emit("error", {"code": "start_failed", "message": str(exc), "recoverable": True})
                 raise
             self.session = s
+            log.info("session started: engine=%s provider=%s", result.get("engine"), result.get("provider"))
             return result
 
     def _stop_session(self, detail: str | None) -> None:
