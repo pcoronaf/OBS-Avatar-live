@@ -13,7 +13,7 @@ datas, binaries, hiddenimports = [], [], []
 
 # ONNX Runtime: whichever distribution is installed (onnxruntime, -openvino, -directml, -gpu)
 # ships under the "onnxruntime" import name.
-for pkg in ("onnxruntime", "cv2", "sounddevice", "_sounddevice_data", "cv2_enumerate_cameras"):
+for pkg in ("onnxruntime", "cv2", "sounddevice", "_sounddevice_data", "cv2_enumerate_cameras", "onnx"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
@@ -37,6 +37,8 @@ datas += collect_data_files("avatar_engine")
 datas += [
     (os.path.join(REPO, "contracts", "config.schema.json"), "contracts"),
     (os.path.join(REPO, "models", "MODEL_MANIFEST.json"), "models"),
+    # Redistributable models only (YuNet face detector, MIT) + their license texts.
+    (os.path.join(REPO, "models", "bundled"), os.path.join("models", "bundled")),
 ]
 
 a = Analysis(

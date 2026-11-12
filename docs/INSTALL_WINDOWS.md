@@ -34,7 +34,7 @@ licencia **usted** debe aceptar (ver [LICENSE_REVIEW.md](LICENSE_REVIEW.md)):
 
 ```
 %LOCALAPPDATA%\AvatarLive\models\
-  face_detection_yunet_2023mar.onnx   (detector; MIT, opencv_zoo)
+  face_detection_yunet_2023mar.onnx   (detector; MIT — ya incluido en el instalador desde 0.1.1)
   recognition.onnx                    (embedding estilo ArcFace)
   swapper.onnx                        (compatible con inswapper, 128×128)
 ```
@@ -56,7 +56,7 @@ Si el manifiesto fija un `sha256`, el archivo debe coincidir exactamente o el mo
 
 ### Modelo entrenado con su rostro (.dfm)
 Si entrenó un modelo con DeepFaceLab o DeepFaceLive (archivo `.dfm`), puede usarlo en lugar de `recognition.onnx` +
-`swapper.onnx`; solo necesita además `face_detection_yunet_2023mar.onnx`.
+`swapper.onnx`; el detector YuNet ya viene incluido en el instalador (desde 0.1.1).
 
 1. En la fuente Avatar Live → **Modelo de rostro** → *Modelo entrenado (.dfm)*.
 2. Elija el archivo `.dfm` y marque la confirmación de que el modelo es de su propio rostro (o tiene el
@@ -128,7 +128,8 @@ installer\windows\build_installer.ps1 -Variant Lite -PluginBuildDir build_x64\Re
 
 | Síntoma | Comprobación |
 |---|---|
-| "Avatar Live" no aparece en Fuentes | Ver `%APPDATA%\obs-studio\logs`; comprobar que la DLL está en `obs-plugins\64bit` y la versión de OBS. |
+| "Avatar Live" no aparece en Fuentes | Ver `%APPDATA%\obs-studio\logs`; comprobar que la DLL está en `C:\ProgramData\obs-studio\plugins\obs-avatar-live\` (OBS 31–32: en su subcarpeta `bin\64bit\`) y la versión de OBS (≥ 31). |
+| El plugin aparece como **Legacy** en el *Plugin Manager* | Versión 0.1.0 instalada en Program Files. Instale 0.1.1 o posterior: usa la carpeta nueva y elimina la copia antigua. |
 | Estado "engine not responding" | `avatar-engine selftest`; antivirus bloqueando `avatar-engine.exe`; ver `%LOCALAPPDATA%\AvatarLive\logs`. |
 | Imagen degradada / FPS únicos bajos | `avatar-engine benchmark`; elegir `CPU puro` o `Bajo consumo`; reducir resolución de captura. |
 | DirectML/OpenVINO no se elige | Es esperable si el benchmark no lo considera viable; ver `fallback_reason` en el Dock. |

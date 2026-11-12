@@ -66,8 +66,12 @@ def test_unaudited_models_require_acknowledgement(fake_models, monkeypatch):
     manifest.acknowledge("arcface_recognition", manifest.sha256_file(fake_models["arcface_recognition"]), d)
     r = manifest.resolve("arcface_recognition")
     assert not r.audited and r.warning
-    with pytest.raises(manifest.ModelError, match="missing"):
+    (d / "face_detection_yunet_2023mar.onnx").write_bytes(b"tampered")  # user copy overrides the bundled one
+    with pytest.raises(manifest.ModelError, match="checksum"):
         manifest.resolve("yunet_face_detector")
+    fake_models["inswapper_compatible_swapper"].unlink()
+    with pytest.raises(manifest.ModelError, match="missing"):
+        manifest.resolve("inswapper_compatible_swapper")
     # pinned checksum mismatch
     man = manifest.load_manifest()
     for m in man["models"]:
@@ -176,3 +180,12 @@ def test_device_ids_and_virtual_camera_filter():
     assert parse_device("1") == (1, None) and parse_device(None) == (0, None)
     assert parse_device("file.mp4") == ("file.mp4", None)
     assert _is_own_output("OBS Virtual Camera") and not _is_own_output("Integrated Webcam")
+
+
+def test_bundled_yunet_resolves_without_acknowledgement(monkeypatch, tmp_path):
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))  # empty user models dir
+    r = manifest.resolve("yunet_face_detector")
+    assert r.audited and r.warning is None and r.path.parent.name == "bundled"
+    from avatar_engine.vision.face_detect import FaceDetector
+
+    assert FaceDetector().backend == "yunet"

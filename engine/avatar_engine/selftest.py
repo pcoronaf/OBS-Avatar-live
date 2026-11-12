@@ -97,11 +97,14 @@ def run() -> tuple[bool, dict]:
 
         sounddevice.query_devices()
 
+    def t_onnx_reader():
+        import onnx  # noqa: F401  (needed to read the inswapper emap; without it the swap is wrong)
+
     def t_camera_enum():
         from avatar_engine.vision.capture import list_video_devices  # noqa: F401
         import cv2_enumerate_cameras  # noqa: F401
 
-    for name, fn in (("audio_backend", t_audio_backend), ("camera_enumeration", t_camera_enum), ("config", t_config), ("frame_ring", t_ring), ("onnxruntime_cpu", t_onnxruntime),
+    for name, fn in (("audio_backend", t_audio_backend), ("camera_enumeration", t_camera_enum), ("onnx_reader", t_onnx_reader), ("config", t_config), ("frame_ring", t_ring), ("onnxruntime_cpu", t_onnxruntime),
                      ("rig2d", t_rig), ("visemes", t_visemes), ("opencv_haar", t_haar)):
         step(name, fn)
     return ok, report

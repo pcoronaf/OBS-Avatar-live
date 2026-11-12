@@ -15,9 +15,11 @@ third-party components. Licenses must be re-verified for every release; see `doc
 | OpenCV Haar cascades | Fallback face detector | Intel License Agreement (BSD-style, in XML header) | https://github.com/opencv/opencv/tree/4.x/data/haarcascades |
 | NumPy | Numerics | BSD-3-Clause | https://numpy.org |
 | python-sounddevice / PortAudio | Microphone capture | MIT / MIT-style | https://github.com/spatialaudio/python-sounddevice |
+| cv2-enumerate-cameras | Camera names for the device list | MIT | https://github.com/chinaheyu/cv2_enumerate_cameras |
+| YuNet face detector `face_detection_yunet_2023mar.onnx` (**bundled**, `models/bundled/`) | Face detection + 5 landmarks | MIT, Copyright (c) 2020 Shiqi Yu (`models/bundled/LICENSE.yunet.txt`) | https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet |
 | PyInstaller | Engine packaging | GPL-2.0 with bootloader exception | https://pyinstaller.org |
 
-## Models (not bundled)
+## Models (not bundled, except YuNet above)
 
 No model weights are distributed with this project. Models the user may supply are listed with their declared
 licenses in `models/MODEL_MANIFEST.json`. InsightFace-derived weights (recognition, `inswapper`) are declared by their
