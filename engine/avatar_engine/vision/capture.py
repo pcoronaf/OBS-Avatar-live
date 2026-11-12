@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import threading
@@ -28,42 +29,75 @@ def _is_own_output(name: str) -> bool:
     return any(v in n for v in VIRTUAL_CAMERA_NAMES)
 
 
-def list_video_devices(max_index: int = 6) -> list[dict]:
+log = logging.getLogger("avatar_engine.devices")
+
+
+def _in_fresh_thread(fn, timeout: float):
+    """Run `fn` in a new thread. Windows camera enumeration initialises COM per thread; a thread
+    whose COM state was set differently by another library (e.g. PortAudio) makes it fail silently."""
+    box: dict = {}
+
+    def run():
+        try:
+            box["value"] = fn()
+        except Exception as exc:  # reported to the caller
+            box["error"] = exc
+
+    t = threading.Thread(target=run, name="device-enum", daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"device enumeration took longer than {timeout:.0f} s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
+def list_video_devices(max_index: int = 4, report: list | None = None) -> list[dict]:
     """Cameras with their real names. Ids carry the capture backend ("msmf:0", "dshow:1") because
-    Media Foundation and DirectShow number devices differently."""
+    Media Foundation and DirectShow number devices differently. `report` collects diagnostics."""
+    report = report if report is not None else []
     out: list[dict] = []
     try:
         from cv2_enumerate_cameras import enumerate_cameras
-
+    except Exception as exc:
+        enumerate_cameras = None
+        report.append(f"cv2_enumerate_cameras unavailable: {exc}")
+    if enumerate_cameras is not None:
         backends = [(cv2.CAP_MSMF, "msmf"), (cv2.CAP_DSHOW, "dshow")] if sys.platform == "win32" else \
             [(cv2.CAP_ANY, "any")]
         seen = set()
         for api, tag in backends:
             try:
-                cams = enumerate_cameras(api)
-            except Exception:
+                cams = _in_fresh_thread(lambda api=api: enumerate_cameras(api), 5.0) or []
+            except Exception as exc:
+                report.append(f"{tag}: enumeration failed: {exc}")
                 continue
+            report.append(f"{tag}: {len(cams)} device(s): " + ", ".join(c.name for c in cams))
             for c in cams:
                 key = (c.name, getattr(c, "path", None))
                 if _is_own_output(c.name) or key in seen:
                     continue
                 seen.add(key)
-                idx = c.index if api != cv2.CAP_ANY else c.index
-                out.append({"id": f"{tag}:{idx}" if tag != "any" else str(idx), "name": c.name})
+                out.append({"id": f"{tag}:{c.index}" if tag != "any" else str(c.index), "name": c.name})
             if out:
                 break  # prefer the first backend that reports cameras (MSMF, OpenCV's default)
-        if out:
-            return out
-    except ImportError:
-        pass
-    # Fallback: probe indexes (slow, no names).
-    backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
-    for i in range(max_index):
-        cap = cv2.VideoCapture(i, backend)
-        ok = cap.isOpened()
-        cap.release()
-        if ok:
-            out.append({"id": f"dshow:{i}" if sys.platform == "win32" else str(i), "name": f"Camera {i}"})
+    if not out:
+        # Fallback: open indexes one by one (no names). Bounded so the plugin's refresh does not time out;
+        # a camera already in use by another app (or an OBS "Video Capture Device") may not open here.
+        backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+        deadline = time.monotonic() + 3.0
+        for i in range(max_index):
+            if time.monotonic() > deadline:
+                report.append("probe: stopped after 3 s")
+                break
+            cap = cv2.VideoCapture(i, backend)
+            ok = cap.isOpened()
+            cap.release()
+            report.append(f"probe index {i}: {'opened' if ok else 'not available'}")
+            if ok:
+                out.append({"id": f"dshow:{i}" if sys.platform == "win32" else str(i), "name": f"Camera {i}"})
+    log.info("video devices: %s | %s", [d["name"] for d in out], "; ".join(report))
     return out
 
 

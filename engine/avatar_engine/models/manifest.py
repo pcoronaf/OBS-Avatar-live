@@ -104,7 +104,8 @@ def resolve(model_id: str, manifest: dict | None = None, models_dir: Path | None
         raise ModelError(f"model {model_id!r} is not declared in MODEL_MANIFEST.json")
     path = find_model_file(entry["file"], models_dir) or models_dir / entry["file"]
     if not path.exists():
-        raise ModelError(f"model file missing: {path} (see docs/INSTALL_WINDOWS.md; weights are not bundled)")
+        hint = entry.get("user_hint") or "see docs/INSTALL_WINDOWS.md; weights are not bundled"
+        raise ModelError(f"model file missing: {path}. {hint}")
     digest = sha256_file(path)
     pinned = entry.get("sha256")
     if pinned:

@@ -7,6 +7,7 @@ keeps receiving the real microphone directly (spec §2.6, §6).
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 import wave
@@ -64,6 +65,18 @@ def _same_device(a: str, b: str) -> bool:
 
 def list_input_devices(sd=None) -> list[dict]:
     """One entry per physical microphone; the id is its name (stable across reboots/replugging)."""
+    if sd is None and sys.platform == "win32":
+        # Same COM isolation as the camera enumeration (vision.capture._in_fresh_thread).
+        from avatar_engine.vision.capture import _in_fresh_thread
+
+        try:
+            return _in_fresh_thread(lambda: _list_input_devices_impl(None), 5.0) or []
+        except Exception:
+            return []
+    return _list_input_devices_impl(sd)
+
+
+def _list_input_devices_impl(sd=None) -> list[dict]:
     if sd is None:
         try:
             import sounddevice as sd
