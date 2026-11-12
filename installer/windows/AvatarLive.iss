@@ -1,6 +1,9 @@
 ; Inno Setup 6 script for OBS Avatar Live (Windows x64).
 ; Built by build_installer.ps1, which passes the /D defines below.
-; Installs: plugin DLL into OBS, engine + locale into OBS plugin data dir.
+; Installs into the per-machine OBS plugin folder (https://obsproject.com/kb/legacy-plugin-locations):
+;   OBS >= 33:  C:\ProgramData\obs-studio\plugins\obs-avatar-live\obs-avatar-live.dll + data\
+;   OBS 31-32:  C:\ProgramData\obs-studio\plugins\obs-avatar-live\bin\64bit\obs-avatar-live.dll + data\
+; and removes copies left in the legacy Program Files location by earlier versions.
 ; Does NOT install any camera driver (OBS Virtual Camera is used).
 
 #ifndef AppVersion
@@ -22,6 +25,7 @@
   #define EngineDir RepoDir + "\dist\" + Variant + "\avatar-engine"
 #endif
 #define MinObsMajor 31
+#define FlatLayoutObsMajor 33
 
 [Setup]
 AppId={{A84942C7-9B41-4B28-8238-FC8C64241156}
@@ -35,10 +39,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 MinVersion=10.0.17763
-DefaultDirName={code:GetObsDir}
+DefaultDirName={commonappdata}\obs-studio\plugins\obs-avatar-live
+DisableDirPage=yes
 DirExistsWarning=no
 AppendDefaultDirName=no
-UsePreviousAppDir=yes
+UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 OutputBaseFilename=AvatarLive-Setup-{#AppVersion}-{#Variant}
 Compression=lzma2/max
@@ -53,30 +58,42 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-es.ObsNotFound=No se encontró OBS Studio. Seleccione manualmente la carpeta de instalación de OBS (la que contiene bin\64bit\obs64.exe).
-en.ObsNotFound=OBS Studio was not found. Please select the OBS installation folder (the one containing bin\64bit\obs64.exe).
 es.ObsTooOld=Se requiere OBS Studio %1 o superior. Versión encontrada: %2.
 en.ObsTooOld=OBS Studio %1 or later is required. Found version: %2.
-es.NotObsDir=La carpeta seleccionada no contiene bin\64bit\obs64.exe.
-en.NotObsDir=The selected folder does not contain bin\64bit\obs64.exe.
+es.ObsNotFoundContinue=No se encontró OBS Studio. El plugin se instalará en la carpeta de plugins de OBS (%1) con el formato de OBS 33 o superior.
+en.ObsNotFoundContinue=OBS Studio was not found. The plugin will be installed in the OBS plugin folder (%1) using the OBS 33+ layout.
 es.DeleteProfiles=¿Desea eliminar también sus perfiles locales, benchmarks y registros de Avatar Live (%1)?%n%nEsta acción no se puede deshacer.
 en.DeleteProfiles=Also delete your local Avatar Live profiles, benchmarks and logs (%1)?%n%nThis cannot be undone.
 
 [Files]
-; Plugin module
-Source: "{#PluginDll}"; DestDir: "{app}\obs-plugins\64bit"; Flags: ignoreversion
-Source: "{#PluginPdb}"; DestDir: "{app}\obs-plugins\64bit"; Flags: ignoreversion skipifsourcedoesntexist
-; Plugin data (locale etc.)
-Source: "{#RepoDir}\data\*"; DestDir: "{app}\data\obs-plugins\obs-avatar-live"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; Plugin module: flat layout for OBS >= 33, bin\64bit for OBS 31-32 (see header)
+Source: "{#PluginDll}"; DestDir: "{app}"; Flags: ignoreversion; Check: UseFlatLayout
+Source: "{#PluginPdb}"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Check: UseFlatLayout
+Source: "{#PluginDll}"; DestDir: "{app}\bin\64bit"; Flags: ignoreversion; Check: not UseFlatLayout
+Source: "{#PluginPdb}"; DestDir: "{app}\bin\64bit"; Flags: ignoreversion skipifsourcedoesntexist; Check: not UseFlatLayout
+; Plugin data (locale etc.) — same place in both layouts, so obs_module_file() finds it either way
+Source: "{#RepoDir}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 ; Engine (PyInstaller one-folder build)
-Source: "{#EngineDir}\*"; DestDir: "{app}\data\obs-plugins\obs-avatar-live\engine"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#EngineDir}\*"; DestDir: "{app}\data\engine"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Notices
-Source: "{#RepoDir}\LICENSE"; DestDir: "{app}\data\obs-plugins\obs-avatar-live"; Flags: ignoreversion
-Source: "{#RepoDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\data\obs-plugins\obs-avatar-live"; Flags: ignoreversion
-Source: "{#RepoDir}\models\MODEL_MANIFEST.json"; DestDir: "{app}\data\obs-plugins\obs-avatar-live"; Flags: ignoreversion
+Source: "{#RepoDir}\LICENSE"; DestDir: "{app}\data"; Flags: ignoreversion
+Source: "{#RepoDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\data"; Flags: ignoreversion
+Source: "{#RepoDir}\models\MODEL_MANIFEST.json"; DestDir: "{app}\data"; Flags: ignoreversion
+
+[InstallDelete]
+; Legacy Program Files location used by 0.1.0 (would otherwise be loaded/flagged by OBS)
+Type: files; Name: "{code:GetObsDir}\obs-plugins\64bit\obs-avatar-live.dll"
+Type: files; Name: "{code:GetObsDir}\obs-plugins\64bit\obs-avatar-live.pdb"
+Type: filesandordirs; Name: "{code:GetObsDir}\data\obs-plugins\obs-avatar-live"
+; The other layout in this folder (e.g. after upgrading OBS 32 -> 33), so only one copy remains
+Type: filesandordirs; Name: "{app}\bin"; Check: UseFlatLayout
+Type: files; Name: "{app}\obs-avatar-live.dll"; Check: not UseFlatLayout
+Type: files; Name: "{app}\obs-avatar-live.pdb"; Check: not UseFlatLayout
+; Old engine files (PyInstaller folder contents change between versions)
+Type: filesandordirs; Name: "{app}\data\engine"
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\data\obs-plugins\obs-avatar-live"
+Type: filesandordirs; Name: "{app}"
 
 [Code]
 function ObsExe(Dir: String): String;
@@ -93,8 +110,6 @@ begin
     Result := Dir
   else if RegQueryStringValue(HKLM32, 'SOFTWARE\OBS Studio', '', Dir) and FileExists(ObsExe(Dir)) then
     Result := Dir
-  else if FileExists(ObsExe(ExpandConstant('{commonpf64}\obs-studio'))) then
-    Result := ExpandConstant('{commonpf64}\obs-studio')
   else
     Result := ExpandConstant('{commonpf64}\obs-studio');
 end;
@@ -114,34 +129,32 @@ begin
     Result := StrToIntDef(VersionStr, -1);
 end;
 
+var
+  ObsMajor: Integer;
+
 function InitializeSetup(): Boolean;
+var
+  Ver: String;
 begin
   Result := True;
   if not FileExists(ObsExe(GetObsDir(''))) then
-    MsgBox(CustomMessage('ObsNotFound'), mbInformation, MB_OK);
+  begin
+    ObsMajor := {#FlatLayoutObsMajor};  { unknown: use the current OBS layout }
+    SuppressibleMsgBox(FmtMessage(CustomMessage('ObsNotFoundContinue'),
+      [ExpandConstant('{commonappdata}\obs-studio\plugins')]), mbInformation, MB_OK, IDOK);
+    exit;
+  end;
+  ObsMajor := ObsMajorVersion(GetObsDir(''), Ver);
+  if ObsMajor < {#MinObsMajor} then
+  begin
+    MsgBox(FmtMessage(CustomMessage('ObsTooOld'), ['{#MinObsMajor}', Ver]), mbError, MB_OK);
+    Result := False;
+  end;
 end;
 
-function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  Ver: String;
-  Major: Integer;
+function UseFlatLayout(): Boolean;
 begin
-  Result := True;
-  if CurPageID = wpSelectDir then
-  begin
-    if not FileExists(ObsExe(WizardDirValue())) then
-    begin
-      MsgBox(CustomMessage('NotObsDir'), mbError, MB_OK);
-      Result := False;
-      exit;
-    end;
-    Major := ObsMajorVersion(WizardDirValue(), Ver);
-    if Major < {#MinObsMajor} then
-    begin
-      MsgBox(FmtMessage(CustomMessage('ObsTooOld'), ['{#MinObsMajor}', Ver]), mbError, MB_OK);
-      Result := False;
-    end;
-  end;
+  Result := ObsMajor >= {#FlatLayoutObsMajor};
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
