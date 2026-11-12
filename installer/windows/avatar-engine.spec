@@ -13,7 +13,7 @@ datas, binaries, hiddenimports = [], [], []
 
 # ONNX Runtime: whichever distribution is installed (onnxruntime, -openvino, -directml, -gpu)
 # ships under the "onnxruntime" import name.
-for pkg in ("onnxruntime", "cv2", "sounddevice", "_sounddevice_data", "cv2_enumerate_cameras"):
+for pkg in ("onnxruntime", "cv2", "sounddevice", "_sounddevice_data", "cv2_enumerate_cameras", "onnx"):
     try:
         d, b, h = collect_all(pkg)
         datas += d

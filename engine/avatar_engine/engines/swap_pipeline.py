@@ -99,6 +99,10 @@ class Swapper:
         if self.target_name is None or self.latent_name is None:
             raise ModelError("swap model must have an image input and a latent input")
         self.emap = _load_emap(model_path)
+        if self.emap is None and self.latent_dim == 512:
+            # inswapper-style models embed a 512x512 identity mapping; without it the result is wrong.
+            raise ModelError("could not read the identity mapping (emap) from the swap model; "
+                             "reinstall the engine or provide <model>.emap.npy next to it")
         self.output_name = session.get_outputs()[0].name
 
     def latent(self, embedding: np.ndarray) -> np.ndarray:

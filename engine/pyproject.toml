@@ -15,13 +15,14 @@ dependencies = [
   "opencv-python-headless>=4.8,<5",  # 5.x drops the bundled Haar cascades
   "sounddevice>=0.4.6",  # microphone (PortAudio, WASAPI shared mode)
   "cv2-enumerate-cameras>=1.1",  # camera names for the device list (MIT)
+  "onnx>=1.15",  # reads the identity-mapping matrix (emap) embedded in inswapper-compatible models
 ]
 
 [project.optional-dependencies]
 openvino = ["onnxruntime-openvino>=1.17"]
 directml = ["onnxruntime-directml>=1.17"]
 system = ["psutil>=5.9"]
-dev = ["pytest>=8", "psutil>=5.9", "onnx>=1.15"]
+dev = ["pytest>=8", "psutil>=5.9"]
 
 [project.scripts]
 avatar-engine = "avatar_engine.main:main"
