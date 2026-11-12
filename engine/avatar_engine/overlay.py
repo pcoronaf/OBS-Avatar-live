@@ -65,19 +65,36 @@ class DisclosureLabel:
         return bgra
 
 
+def _wrap(text: str, font_scale: float, thickness: int, max_w: int) -> list[str]:
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        trial = (cur + " " + w).strip()
+        if cur and cv2.getTextSize(trial, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0][0] > max_w:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines[:6]
+
+
 def status_frame(width: int, height: int, title: str, detail: str = "") -> np.ndarray:
-    """Neutral, face-free frame shown when output is stale, paused or failed."""
+    """Neutral, face-free frame shown when output is stale, paused or failed. Long details are wrapped."""
     img = np.zeros((height, width, 4), np.uint8)
     img[..., :3] = (40, 34, 30)
     img[..., 3] = 255
     s = max(height / 720.0, 0.35)
     title, detail = _ascii_fold(title), _ascii_fold(detail)
+    max_w = int(width * 0.9)
+    y = int(height / 2)
     for i, (txt, fs) in enumerate(((title, 1.1 * s), (detail, 0.7 * s))):
         if not txt:
             continue
         th = max(1, int(2 * s))
-        (tw, tht), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
-        y = int(height / 2 + i * 50 * s)
-        cv2.putText(img, txt, ((width - tw) // 2, y), cv2.FONT_HERSHEY_SIMPLEX, fs, (230, 230, 230, 255), th,
-                    cv2.LINE_AA)
+        for line in _wrap(txt, fs, th, max_w):
+            (tw, tht), _ = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+            cv2.putText(img, line, ((width - tw) // 2, y), cv2.FONT_HERSHEY_SIMPLEX, fs, (230, 230, 230, 255), th,
+                        cv2.LINE_AA)
+            y += int(tht * 1.8) + (int(16 * s) if i == 0 else 0)
     return img
