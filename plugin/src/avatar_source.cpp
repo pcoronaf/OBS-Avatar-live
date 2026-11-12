@@ -172,6 +172,8 @@ struct AvatarSource {
 	bool have_frame = false;
 	uint64_t last_frame_ts = 0;
 	bool frozen = false;
+	uint64_t last_status_check_ns = 0;
+	std::string last_status_key; // state|detail|error: a change re-draws an open properties window
 
 	std::mutex msg_mutex;
 	std::string message; // feedback from the last user action
@@ -314,9 +316,26 @@ uint32_t avatar_get_height(void *data)
 	return static_cast<AvatarSource *>(data)->out_h;
 }
 
+void refresh_properties_on_status_change(AvatarSource *s)
+{
+	const uint64_t now = os_gettime_ns();
+	if (now - s->last_status_check_ns < 250 * kMs)
+		return;
+	s->last_status_check_ns = now;
+	ControllerStatus st = s->ctl->status();
+	std::string key = st.state + "|" + st.detail + "|" + st.last_error + "|" + std::to_string(st.restarts) + "|" +
+			  s->get_message();
+	if (key == s->last_status_key)
+		return;
+	s->last_status_key = key;
+	// Thread-safe: OBS's properties window reloads itself on its UI thread.
+	obs_source_update_properties(s->source);
+}
+
 void avatar_video_tick(void *data, float)
 {
 	auto *s = static_cast<AvatarSource *>(data);
+	refresh_properties_on_status_change(s);
 	FrameInfo info;
 	// Non-blocking seqlock copy (see PROTOCOL.md §2); never waits on the engine.
 	if (s->ctl->try_read_frame(s->scratch, info) == ReadResult::NewFrame) {
@@ -406,6 +425,66 @@ bool consent_modified(obs_properties_t *props, obs_property_t *, obs_data_t *set
 	const bool self = obs_data_get_bool(settings, "consent_subject_is_self");
 	obs_property_set_enabled(obs_properties_get(props, "create_profile"), rights);
 	obs_property_set_visible(obs_properties_get(props, "consent_reference"), !self);
+	return true;
+}
+
+struct LicenseTask {
+	obs_weak_source_t *weak = nullptr;
+	std::string message;
+};
+
+void license_task_ui(void *param)
+{
+	auto *t = static_cast<LicenseTask *>(param);
+	if (obs_source_t *src = obs_weak_source_get_source(t->weak)) {
+		if (auto *s = static_cast<AvatarSource *>(obs_obj_get_data(src)))
+			s->set_message(t->message);
+		obs_source_update_properties(src);
+		obs_source_release(src);
+	}
+	obs_weak_source_release(t->weak);
+	delete t;
+}
+
+bool on_confirm_licenses(obs_properties_t *, obs_property_t *, void *data)
+{
+	auto *s = static_cast<AvatarSource *>(data);
+	obs_data_t *settings = obs_source_get_settings(s->source);
+	const bool accepted = obs_data_get_bool(settings, "license_accept");
+	obs_data_release(settings);
+	if (!accepted) {
+		s->set_message(T_("Msg.LicenseCheckboxRequired"));
+		return true;
+	}
+	s->set_message(T_("Msg.ConfirmingLicenses"));
+	obs_weak_source_t *weak = obs_source_get_weak_source(s->source);
+	s->ctl->acknowledge_models([weak](const ReplyResult &r) {
+		auto *t = new LicenseTask();
+		t->weak = weak;
+		if (!r.ok) {
+			t->message =
+				std::string(T_("Msg.LicensesFailed")) + " " + r.error_code + ": " + r.error_message;
+		} else {
+			std::string msg = T_("Msg.LicensesConfirmed");
+			const json::Value &done = r.payload["acknowledged"];
+			for (size_t i = 0; i < done.size(); i++)
+				msg += "\n- " + done.at(i)["file"].as_string("?") + " (" +
+				       done.at(i)["license"].as_string("") + ")";
+			const json::Value &missing = r.payload["missing"];
+			for (size_t i = 0; i < missing.size(); i++)
+				msg += "\n- " + std::string(T_("Msg.ModelMissing")) + " " +
+				       missing.at(i)["file"].as_string("?");
+			t->message = msg;
+		}
+		obs_queue_task(OBS_TASK_UI, license_task_ui, t, false);
+	});
+	return true;
+}
+
+bool on_license_accept_modified(obs_properties_t *props, obs_property_t *, obs_data_t *settings)
+{
+	obs_property_set_enabled(obs_properties_get(props, "confirm_licenses"),
+				 obs_data_get_bool(settings, "license_accept"));
 	return true;
 }
 
@@ -614,6 +693,11 @@ obs_properties_t *avatar_get_properties(void *data)
 	obs_property_list_add_string(fml, T_("FaceModel.Inswapper"), "inswapper");
 	obs_property_list_add_string(fml, T_("FaceModel.Dfm"), "dfm");
 	obs_property_set_modified_callback(fml, on_swap_model_changed);
+	// One-time confirmation of user-supplied model licenses (replaces `avatar-engine models acknowledge`).
+	obs_properties_add_text(fm, "license_info", T_("License.Info"), OBS_TEXT_INFO);
+	obs_property_t *lic = obs_properties_add_bool(fm, "license_accept", T_("License.Accept"));
+	obs_property_set_modified_callback(lic, on_license_accept_modified);
+	obs_properties_add_button2(fm, "confirm_licenses", T_("License.Confirm"), on_confirm_licenses, s);
 	obs_properties_add_path(fm, "dfm_model", T_("FaceModel.File"), OBS_PATH_FILE, "DeepFaceLive model (*.dfm)",
 				nullptr);
 	obs_properties_add_bool(fm, "dfm_rights", T_("FaceModel.Rights"));
@@ -704,6 +788,7 @@ void avatar_get_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "max_threads", 4);
 	obs_data_set_default_int(settings, "stale_frame_ms", 500);
 	obs_data_set_default_string(settings, "swap_model", "inswapper");
+	obs_data_set_default_bool(settings, "license_accept", false);
 	obs_data_set_default_bool(settings, "dfm_rights", false);
 	obs_data_set_default_double(settings, "dfm_coverage", 1.0);
 	obs_data_set_default_double(settings, "dfm_offset_y", 0.0);

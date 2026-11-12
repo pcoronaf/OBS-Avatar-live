@@ -71,6 +71,7 @@ class OutputScheduler:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.state_detail = ""
+        self.hint_fn: Callable[[], str] | None = None  # why there is no avatar frame yet
         self.forced_status: tuple[str, str] | None = None
 
     # -- one tick (unit-testable without a thread) -------------------------------------------
@@ -88,8 +89,13 @@ class OutputScheduler:
             except Exception as exc:  # engine bug must not kill the clock
                 self.state_detail = f"engine error: {exc}"
             if ef is None:
-                img = self.compositor.status("Avatar Live", "Iniciando motor..." if not self.state_detail
-                                             else self.state_detail)
+                hint = self.state_detail
+                if not hint and self.hint_fn is not None:
+                    try:
+                        hint = self.hint_fn()
+                    except Exception:
+                        hint = ""
+                img = self.compositor.status("Avatar Live", hint or "Iniciando motor...")
                 flags |= fr.FLAG_DEGRADED
             elif now - ef.created_ts_ns > self.stale_ns:
                 img = self.compositor.status("Avatar Live: señal degradada",

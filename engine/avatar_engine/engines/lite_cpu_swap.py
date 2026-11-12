@@ -7,6 +7,7 @@ frames. Unique (transformed) FPS is reported separately (ADR-003).
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from pathlib import Path
@@ -22,6 +23,8 @@ from avatar_engine.models import manifest
 from avatar_engine.performance.adaptive_controller import AdaptiveController, QualitySettings, WindowSample
 from avatar_engine.performance.provider_probe import ProviderCandidate, discover
 from avatar_engine.vision.capture import LatestFrameQueue
+
+log = logging.getLogger("avatar_engine.swap")
 
 SWAP_MODELS = ("yunet_face_detector", "arcface_recognition", "inswapper_compatible_swapper")
 
@@ -95,6 +98,9 @@ class LiteCpuSwapEngine(IAvatarEngine):
         self.runtime_errors = 0
         self._last_inference_start = 0.0
         self._profile_img: np.ndarray | None = None
+        self.frames_in = 0
+        self.frames_processed = 0
+        self.last_error: str | None = None
         self._profile_lm: np.ndarray | None = None
 
     @classmethod
@@ -157,6 +163,9 @@ class LiteCpuSwapEngine(IAvatarEngine):
 
     # ------------------------------------------------------------------ inputs/outputs
     def push_video(self, frame_bgr: np.ndarray, monotonic_ts: int) -> None:
+        if self.frames_in == 0:
+            log.info("first webcam frame received: %dx%d", frame_bgr.shape[1], frame_bgr.shape[0])
+        self.frames_in += 1
         self.queue.put(frame_bgr, monotonic_ts)
 
     def poll_frame(self, now: int) -> EngineFrame | None:
@@ -204,6 +213,9 @@ class LiteCpuSwapEngine(IAvatarEngine):
 
     def on_runtime_error(self, exc: Exception) -> None:
         self.runtime_errors += 1
+        self.last_error = f"{type(exc).__name__}: {exc}"
+        if self.runtime_errors in (1, 10) or self.runtime_errors % 100 == 0:
+            log.error("inference failed (%d times): %s", self.runtime_errors, self.last_error, exc_info=exc)
         self.emit("error", {"code": "inference_failed", "message": str(exc), "recoverable": True})
         time.sleep(0.2)
 
@@ -230,10 +242,13 @@ class LiteCpuSwapEngine(IAvatarEngine):
             except Exception as exc:  # provider/device failure
                 self.on_runtime_error(exc)
                 continue
+            self.frames_processed += 1
             for k, v in res.timings_ms.items():
                 self.stages.add(k, v)
             if not res.face_found:
                 self.no_face_frames += 1
+                if self.no_face_frames in (1, 30) or self.no_face_frames % 300 == 0:
+                    log.info("no face detected in webcam frame (%d frames so far)", self.no_face_frames)
                 continue  # keep last result; the scheduler turns it into a visible stale state after 500 ms
             t0 = time.perf_counter()
             bgra = self._compose(res.frame)
@@ -241,6 +256,8 @@ class LiteCpuSwapEngine(IAvatarEngine):
             created = now_ns()
             self.e2e.add((created - ts) / 1e6)
             self._seq += 1
+            if self._seq == 1:
+                log.info("first swapped frame produced (%s)", self.candidate.label)
             self.unique_fps.tick()
             with self._lock:
                 self._latest = EngineFrame(bgra, self._seq, ts, created, self.generation_id,
@@ -267,6 +284,18 @@ class LiteCpuSwapEngine(IAvatarEngine):
                                "generation_id": self.generation_id})
         return True
 
+    def status_hint(self) -> str:
+        """Why no avatar frame is shown yet (Spanish UI text; ASCII-folded when drawn)."""
+        if self.frames_in == 0:
+            return "Esperando imagen de la webcam..."
+        if self.last_error and self._seq == 0:
+            return "Error de inferencia: " + self.last_error[:90]
+        if self._seq == 0 and self.frames_processed == 0:
+            return "Procesando el primer cuadro..."
+        if self.no_face_frames and (self._seq == 0 or self.unique_fps.fps() == 0):
+            return "No se detecta un rostro en la webcam (mire a la camara, buena luz)"
+        return ""
+
     def get_metrics(self) -> dict[str, Any]:
         lvl = self.controller.level if self.controller else 0
         return {
@@ -287,6 +316,9 @@ class LiteCpuSwapEngine(IAvatarEngine):
             "fallback_reason": self.fallback_reason,
             "benchmark_timestamp": self.benchmark_timestamp,
             "model_warnings": self.warnings,
+            "webcam_frames": self.frames_in,
+            "last_inference_error": self.last_error,
+            "status_hint": self.status_hint() or None,
         }
 
 

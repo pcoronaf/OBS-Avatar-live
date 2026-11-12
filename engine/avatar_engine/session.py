@@ -83,12 +83,29 @@ class Session:
             self.writer.set_generation(gen)
             self.writer.set_ring_flags(fr.RING_RUNNING)
         self.scheduler = OutputScheduler(self.engine, self.writer, self.config)
+        self.scheduler.hint_fn = self.hint
         self.scheduler.start()
         self.state = "running"
         self.emit("state", {"state": "running", "detail": ""})
         m = self.engine.get_metrics()
         return {"session_id": self.session_id, "generation_id": gen, "engine": self.engine.name,
                 "provider": m.get("execution_provider_selected"), "warnings": m.get("model_warnings") or []}
+
+    def hint(self) -> str:
+        """Most useful explanation of why no avatar is visible (camera first, then engine)."""
+        for i in self.inputs:
+            err = getattr(i, "error", None)
+            if err:
+                return "Webcam no disponible: " + str(err)[:80] + " (cierre otras apps/fuentes que la usen)"
+        fn = getattr(self.engine, "status_hint", None)
+        return fn() if fn else ""
+
+    def publish_hint(self) -> None:
+        """Called ~1 Hz: tell the plugin when the explanation changes (status panel / dock)."""
+        h = self.hint() if self.state == "running" else ""
+        if h != getattr(self, "_last_hint", ""):
+            self._last_hint = h
+            self.emit("state", {"state": self.state if not h else "waiting", "detail": h})
 
     def sync_generation(self) -> None:
         """After a provider switch the engine bumps generation_id; publish it to the ring."""

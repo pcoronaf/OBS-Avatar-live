@@ -41,15 +41,12 @@ licencia **usted** debe aceptar (ver [LICENSE_REVIEW.md](LICENSE_REVIEW.md)):
 
 Los ids y nombres de archivo esperados están en [`models/MODEL_MANIFEST.json`](../models/MODEL_MANIFEST.json).
 
-Mientras un modelo no esté auditado (`sha256: null` en el manifiesto), el motor **se niega a cargarlo** hasta que
-usted confirme su licencia para ese archivo concreto (la confirmación queda ligada al hash SHA-256 del archivo):
-
-```
-avatar-engine models list
-avatar-engine models acknowledge arcface_recognition
-avatar-engine models acknowledge inswapper_compatible_swapper
-avatar-engine models acknowledge yunet_face_detector
-```
+Puede dejar los archivos con su nombre original (`inswapper_128.onnx`, `w600k_r50.onnx`) o usar
+`swapper.onnx` / `recognition.onnx`. Mientras un modelo no esté auditado (`sha256: null` en el manifiesto), el
+motor **se niega a cargarlo** hasta que usted confirme su licencia para ese archivo concreto (queda ligada a su
+SHA-256): en la fuente Avatar Live → **Modelo de rostro**, marque la casilla de licencias y pulse
+**Confirmar licencias de modelos** (una sola vez; repítalo si cambia los archivos). Alternativa por línea de
+comandos (PowerShell): `& "C:\ProgramData\obs-studio\plugins\obs-avatar-live\data\engine\avatar-engine.exe" models acknowledge <id>`.
 
 Si el manifiesto fija un `sha256`, el archivo debe coincidir exactamente o el motor no arranca.
 `Lite CPU Audio` no necesita ninguno de estos modelos (usa la cascada Haar de OpenCV si falta YuNet al crear el perfil).

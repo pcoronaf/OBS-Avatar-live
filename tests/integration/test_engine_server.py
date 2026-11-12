@@ -162,3 +162,14 @@ def test_engine_exits_when_parent_dies(isolated_data_dir, session_name):
         for x in (p, parent):
             if x.poll() is None:
                 x.kill()
+
+
+def test_acknowledge_models_requires_confirmation(engine_proc, session_name):
+    _, token = engine_proc
+    c = Client(session_name)
+    c.call("hello", {"auth_token": token, "protocol_version": 1})
+    r = c.call("acknowledge_models", {})
+    assert not r["ok"] and r["error"]["code"] == "invalid_request"
+    r = c.call("acknowledge_models", {"license_accepted": True})
+    assert r["ok"] and {m["id"] for m in r["payload"]["missing"]} >= {"inswapper_compatible_swapper"}
+    c.close()

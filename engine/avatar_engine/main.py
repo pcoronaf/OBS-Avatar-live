@@ -114,8 +114,8 @@ def cmd_models(a) -> int:
     if a.action == "list":
         rows = []
         for m in man["models"]:
-            f = paths.models_dir() / m["file"] if m.get("file") else None
-            rows.append({"id": m["id"], "file": m.get("file"), "present": bool(f and f.exists()),
+            f = manifest.entry_path(m)
+            rows.append({"id": m["id"], "file": f.name if f else m.get("file"), "present": bool(f),
                          "license": m.get("license"), "commercial_use": m.get("commercial_use"),
                          "audited": bool(m.get("sha256"))})
         _print(rows, True)
@@ -124,9 +124,10 @@ def cmd_models(a) -> int:
     if entry is None or not entry.get("file"):
         print("unknown model id", file=sys.stderr)
         return 2
-    f = paths.models_dir() / entry["file"]
-    if not f.exists():
-        print(f"missing file {f}", file=sys.stderr)
+    f = manifest.entry_path(entry)
+    if f is None:
+        names = " or ".join([entry["file"], *entry.get("file_aliases", [])])
+        print(f"missing file {paths.models_dir() / entry['file']} (accepted names: {names})", file=sys.stderr)
         return 2
     print(f"Model: {a.model_id}\nLicense: {entry.get('license')}\nCommercial use: {entry.get('commercial_use')}\n"
           f"URL: {entry.get('license_url')}")

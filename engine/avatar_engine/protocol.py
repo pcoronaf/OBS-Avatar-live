@@ -13,7 +13,7 @@ MAX_MESSAGE_BYTES = 1 << 20
 REQUEST_TYPES = {
     "hello", "ping", "list_devices", "list_profiles", "create_profile", "delete_profile", "start_session",
     "stop_session", "pause", "resume", "freeze_neutral", "set_expression", "set_quality", "get_metrics",
-    "shutdown",
+    "shutdown", "acknowledge_models",
 }
 
 

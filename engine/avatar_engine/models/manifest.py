@@ -44,13 +44,40 @@ def bundled_dirs() -> list[Path]:
     return out
 
 
-def find_model_file(filename: str, models_dir: Path | None = None) -> Path | None:
-    """User models directory first (lets users override), then the bundled copy."""
+def find_model_file(filename: str, models_dir: Path | None = None, aliases: list[str] | None = None) -> Path | None:
+    """User models directory first (lets users override), then the bundled copy. `aliases` are the
+    original upstream file names (e.g. inswapper_128.onnx), accepted so users need not rename files."""
     for d in [models_dir or paths.models_dir(), *bundled_dirs()]:
-        p = d / filename
-        if p.is_file():
-            return p
+        for name in [filename, *(aliases or [])]:
+            p = d / name
+            if p.is_file():
+                return p
     return None
+
+
+def entry_path(entry: dict, models_dir: Path | None = None) -> Path | None:
+    if not entry.get("file"):
+        return None
+    return find_model_file(entry["file"], models_dir, entry.get("file_aliases"))
+
+
+def acknowledge_present(models_dir: Path | None = None, manifest: dict | None = None) -> dict:
+    """Acknowledge every present, unaudited model (the user confirmed the licenses in the UI)."""
+    manifest = manifest or load_manifest()
+    d = models_dir or paths.models_dir()
+    done, missing = [], []
+    for e in manifest.get("models", []):
+        if not e.get("file") or e.get("sha256"):
+            continue  # nothing to acknowledge (no file, or audited/pinned)
+        p = entry_path(e, d)
+        if p is None:
+            missing.append({"id": e["id"], "file": e["file"], "aliases": e.get("file_aliases", []),
+                            "hint": e.get("user_hint")})
+            continue
+        acknowledge(e["id"], sha256_file(p), d)
+        done.append({"id": e["id"], "file": p.name, "license": e.get("license"),
+                     "commercial_use": e.get("commercial_use")})
+    return {"acknowledged": done, "missing": missing}
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -102,7 +129,7 @@ def resolve(model_id: str, manifest: dict | None = None, models_dir: Path | None
     entry = next((m for m in manifest.get("models", []) if m.get("id") == model_id), None)
     if entry is None or not entry.get("file"):
         raise ModelError(f"model {model_id!r} is not declared in MODEL_MANIFEST.json")
-    path = find_model_file(entry["file"], models_dir) or models_dir / entry["file"]
+    path = entry_path(entry, models_dir) or models_dir / entry["file"]
     if not path.exists():
         hint = entry.get("user_hint") or "see docs/INSTALL_WINDOWS.md; weights are not bundled"
         raise ModelError(f"model file missing: {path}. {hint}")
@@ -117,7 +144,8 @@ def resolve(model_id: str, manifest: dict | None = None, models_dir: Path | None
     if not ack or ack.get("sha256") != digest:
         raise ModelError(
             f"model {model_id!r} has not been audited (sha256 null in manifest) and its license has not been "
-            f"acknowledged for this file. Run: avatar-engine models acknowledge {model_id}")
+            f"acknowledged for this file. Press 'Confirm model licenses' in the Avatar Live source "
+            f"(or run: avatar-engine models acknowledge {model_id})")
     return ResolvedModel(model_id, path, digest, False, entry.get("license", ""),
                          entry.get("commercial_use", "unknown"),
                          f"{model_id}: unaudited model used under user acknowledgement ({entry.get('license')})")

@@ -192,6 +192,7 @@ class CameraCapture:
                 if self.cap is None:
                     self.cap = self._open()
                     self.error = None
+                    log.info("camera %r opened (%dx%d requested)", self.device, self.width, self.height)
                 ok, frame = self.cap.read()
                 if not ok or frame is None:
                     raise CameraUnavailable("camera read failed")
@@ -203,6 +204,8 @@ class CameraCapture:
                 self.last_frame_ns = ts
                 self.on_frame(frame, ts)
             except CameraUnavailable as exc:
+                if self.error != str(exc) or failures % 25 == 0:
+                    log.warning("camera %r: %s (attempt %d)", self.device, exc, failures + 1)
                 self.error = str(exc)
                 if self.cap is not None:
                     self.cap.release()

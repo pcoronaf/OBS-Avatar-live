@@ -71,6 +71,7 @@ def status_frame(width: int, height: int, title: str, detail: str = "") -> np.nd
     img[..., :3] = (40, 34, 30)
     img[..., 3] = 255
     s = max(height / 720.0, 0.35)
+    title, detail = _ascii_fold(title), _ascii_fold(detail)
     for i, (txt, fs) in enumerate(((title, 1.1 * s), (detail, 0.7 * s))):
         if not txt:
             continue
