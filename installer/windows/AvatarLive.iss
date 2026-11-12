@@ -134,14 +134,14 @@ var
 
 function InitializeSetup(): Boolean;
 var
-  Ver: String;
+  Ver, PluginsDir: String;
 begin
   Result := True;
   if not FileExists(ObsExe(GetObsDir(''))) then
   begin
     ObsMajor := {#FlatLayoutObsMajor};  { unknown: use the current OBS layout }
-    SuppressibleMsgBox(FmtMessage(CustomMessage('ObsNotFoundContinue'),
-      [ExpandConstant('{commonappdata}\obs-studio\plugins')]), mbInformation, MB_OK, IDOK);
+    PluginsDir := ExpandConstant('{commonappdata}\obs-studio\plugins');
+    SuppressibleMsgBox(FmtMessage(CustomMessage('ObsNotFoundContinue'), [PluginsDir]), mbInformation, MB_OK, IDOK);
     exit;
   end;
   ObsMajor := ObsMajorVersion(GetObsDir(''), Ver);
