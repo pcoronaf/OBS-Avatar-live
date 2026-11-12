@@ -96,7 +96,7 @@ class Session:
         for i in self.inputs:
             err = getattr(i, "error", None)
             if err:
-                return "Webcam no disponible: " + str(err)[:80] + " (cierre otras apps/fuentes que la usen)"
+                return "Webcam no disponible: " + str(err)[:240]
         fn = getattr(self.engine, "status_hint", None)
         return fn() if fn else ""
 

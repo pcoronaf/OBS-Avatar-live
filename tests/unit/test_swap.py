@@ -252,3 +252,43 @@ def test_session_hint_prefers_camera_error(profile):
                 None, lambda n, p: None)
     s.inputs.append(Cam())
     assert s.hint().startswith("Webcam no disponible")
+
+
+def test_camera_falls_back_to_next_api(monkeypatch):
+    import cv2
+
+    from avatar_engine.vision import capture
+
+    class FakeCap:
+        def __init__(self, dev, api=None):
+            self.dev, self.api = dev, api
+
+        def isOpened(self):
+            return self.api != cv2.CAP_MSMF  # MSMF fails, DirectShow works
+
+        def set(self, *a):
+            return True
+
+        def read(self):
+            return True, np.zeros((480, 640, 3), np.uint8)
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(capture.cv2, "VideoCapture", FakeCap)
+    cam = capture.CameraCapture(lambda f, t: None, "msmf:1")
+    monkeypatch.setattr(cam, "_candidates", lambda: [(1, cv2.CAP_MSMF, "msmf:1"),
+                                                     (0, cv2.CAP_DSHOW, "dshow:0 (Integrated Camera)")])
+    c = cam._open()
+    assert c.api == cv2.CAP_DSHOW and cam.opened_via.startswith("dshow:0")
+
+    monkeypatch.setattr(cam, "_candidates", lambda: [(1, cv2.CAP_MSMF, "msmf:1")])
+    with pytest.raises(capture.CameraUnavailable, match="msmf:1: not opened"):
+        cam._open()
+
+
+def test_status_frame_wraps_long_text():
+    from avatar_engine.overlay import _wrap
+
+    lines = _wrap("Webcam no disponible: " + "palabra " * 40, 0.7, 2, 600)
+    assert 2 <= len(lines) <= 6

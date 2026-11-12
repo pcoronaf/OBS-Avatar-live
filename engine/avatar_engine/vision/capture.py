@@ -164,26 +164,73 @@ class CameraCapture:
         self.frames = 0
         self.last_frame_ns = 0
         self.error: str | None = None
+        self.opened_via: str | None = None
+
+    def _candidates(self) -> list[tuple]:
+        """Ways to open the selected camera, best first: (index_or_path, api or None, label).
+
+        Some cameras open with Media Foundation but not DirectShow or vice versa, and the two
+        number devices differently, so the same camera is also tried by *name* in the other API.
+        """
+        dev, api = parse_device(self.device)
+        if not isinstance(dev, int):
+            return [(dev, None, str(dev))]
+        if sys.platform != "win32":
+            return [(dev, api, f"index {dev}")]
+        name = None
+        lists: dict[int, list] = {}
+        try:
+            from cv2_enumerate_cameras import enumerate_cameras
+
+            for a in (cv2.CAP_MSMF, cv2.CAP_DSHOW):
+                try:
+                    lists[a] = _in_fresh_thread(lambda a=a: enumerate_cameras(a), 5.0) or []
+                except Exception:
+                    lists[a] = []
+            src = lists.get(api if api is not None else cv2.CAP_MSMF, [])
+            name = next((c.name for c in src if c.index == dev), None)
+        except ImportError:
+            pass
+        first = api if api is not None else cv2.CAP_MSMF
+        other = cv2.CAP_DSHOW if first == cv2.CAP_MSMF else cv2.CAP_MSMF
+        tag = {cv2.CAP_MSMF: "msmf", cv2.CAP_DSHOW: "dshow"}
+        out = [(dev, first, f"{tag[first]}:{dev}")]
+        if name:
+            for c in lists.get(other, []):
+                if c.name == name:
+                    out.append((c.index, other, f"{tag[other]}:{c.index} ({name})"))
+        out.append((dev, other, f"{tag[other]}:{dev}"))
+        seen, uniq = set(), []
+        for c in out:
+            if (c[0], c[1]) not in seen:
+                seen.add((c[0], c[1]))
+                uniq.append(c)
+        return uniq
 
     def _open(self):
         if os.environ.get("AVATAR_LIVE_FAULT") == "device":
             raise CameraUnavailable("fault injection: camera device lost")
-        dev, api = parse_device(self.device)
-        if isinstance(dev, int) and api is not None:
-            cap = cv2.VideoCapture(dev, api)
-        elif isinstance(dev, int) and sys.platform == "win32":
-            cap = cv2.VideoCapture(dev, cv2.CAP_MSMF)
+        tried = []
+        for dev, api, label in self._candidates():
+            cap = cv2.VideoCapture(dev, api) if api is not None else cv2.VideoCapture(dev)
             if not cap.isOpened():
-                cap = cv2.VideoCapture(dev, cv2.CAP_DSHOW)
-        else:
-            cap = cv2.VideoCapture(dev)
-        if not cap.isOpened():
-            raise CameraUnavailable(f"cannot open camera {self.device!r} (in use by another app or OBS source?)")
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        cap.set(cv2.CAP_PROP_FPS, self.fps)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        return cap
+                tried.append(f"{label}: not opened")
+                cap.release()
+                continue
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            cap.set(cv2.CAP_PROP_FPS, self.fps)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            ok, frame = cap.read()  # some cameras "open" but never deliver frames on one API
+            if not ok or frame is None:
+                tried.append(f"{label}: opened but no frames")
+                cap.release()
+                continue
+            log.info("camera %r opened via %s (%dx%d)", self.device, label, frame.shape[1], frame.shape[0])
+            self.opened_via = label
+            return cap
+        raise CameraUnavailable(f"cannot open camera {self.device!r}: " + "; ".join(tried) +
+                                " (check Windows camera privacy settings and that no other app uses it)")
 
     def _run(self) -> None:
         failures = 0
@@ -192,7 +239,6 @@ class CameraCapture:
                 if self.cap is None:
                     self.cap = self._open()
                     self.error = None
-                    log.info("camera %r opened (%dx%d requested)", self.device, self.width, self.height)
                 ok, frame = self.cap.read()
                 if not ok or frame is None:
                     raise CameraUnavailable("camera read failed")
