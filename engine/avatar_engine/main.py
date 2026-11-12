@@ -189,6 +189,18 @@ def cmd_preview(a) -> int:
     return 0
 
 
+def cmd_devices(a) -> int:
+    """What the engine sees: cameras (with per-backend diagnostics) and microphones."""
+    from avatar_engine.audio.capture import list_input_devices
+    from avatar_engine.vision.capture import list_video_devices
+
+    report: list[str] = []
+    out = {"video": list_video_devices(report=report), "video_diagnostics": report,
+           "audio": list_input_devices()}
+    _print(out, True)
+    return 0
+
+
 def cmd_selftest(a) -> int:
     from avatar_engine.selftest import run
 
@@ -257,6 +269,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dfm-coverage", type=float, default=1.0)
     s.add_argument("--dfm-offset-y", type=float, default=0.0)
     s.set_defaults(fn=cmd_preview)
+
+    s = sub.add_parser("devices", help="list cameras and microphones as the engine sees them (diagnostics)")
+    s.set_defaults(fn=cmd_devices)
 
     s = sub.add_parser("selftest", help="offline checks of config, IPC, frame ring and the audio rig")
     s.set_defaults(fn=cmd_selftest)

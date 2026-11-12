@@ -189,3 +189,24 @@ def test_bundled_yunet_resolves_without_acknowledgement(monkeypatch, tmp_path):
     from avatar_engine.vision.face_detect import FaceDetector
 
     assert FaceDetector().backend == "yunet"
+
+
+def test_missing_model_message_names_the_file_to_download(monkeypatch, tmp_path):
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    with pytest.raises(manifest.ModelError, match="w600k_r50.onnx"):
+        manifest.resolve("arcface_recognition")
+
+
+def test_camera_enumeration_runs_in_a_fresh_thread(monkeypatch):
+    import threading
+
+    from avatar_engine.vision import capture
+
+    caller = threading.get_ident()
+    seen = {}
+    assert capture._in_fresh_thread(lambda: seen.setdefault("t", threading.get_ident()), 2) != caller
+    with pytest.raises(ValueError):
+        capture._in_fresh_thread(lambda: (_ for _ in ()).throw(ValueError("x")), 2)
+    report = []
+    capture.list_video_devices(max_index=1, report=report)
+    assert report  # diagnostics always filled
