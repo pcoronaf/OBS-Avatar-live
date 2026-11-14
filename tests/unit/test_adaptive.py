@@ -78,4 +78,9 @@ def test_select_low_power_profile():
 
 def test_select_falls_back_to_cpu_when_nothing_meets_limits():
     best, reasons = select([_r("cpu", 2, p95=600)], 250, 5)
-    assert best.candidate["key"] == "cpu" and "degraded" in reasons[-1]
+    assert best.candidate["key"] == "cpu" and "degraded mode" in reasons[-1]
+
+
+def test_select_uses_fastest_working_when_nothing_meets_limits():
+    best, reasons = select([_r("cpu", 0.12, p95=8040), _r("directml", 1.5, p95=900)], 250, 5)
+    assert best.candidate["key"] == "directml" and "fastest" in reasons[-1]

@@ -72,9 +72,11 @@ class FpsCounter:
             n = len(self._t)
             if n < 2:
                 return 0.0
-            if now - self._t[-1] > 1.0:  # producer stopped: report 0 instead of the old rate
-                return 0.0
             span = self._t[-1] - self._t[0]
+            interval = span / (n - 1) if n > 1 else 0.0
+            # Producer stopped (no tick for > 3 typical intervals, at least 1 s): report 0, not the old rate.
+            if now - self._t[-1] > max(1.0, 3.0 * interval):
+                return 0.0
             return (n - 1) / span if span > 0 else 0.0
 
     def clear(self) -> None:

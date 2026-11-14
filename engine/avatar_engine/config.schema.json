@@ -97,6 +97,10 @@
         "disclosure_scale": { "type": "number", "minimum": 1.0, "maximum": 4.0, "default": 1.0 }
       }
     },
-    "stale_frame_ms": { "type": "number", "minimum": 100, "maximum": 5000, "default": 500 }
+    "stale_frame_ms": { "type": "number", "minimum": 100, "maximum": 5000, "default": 500 },
+    "stale_max_ms": {
+      "type": "number", "minimum": 500, "maximum": 60000, "default": 10000,
+      "description": "After stale_frame_ms the last face is shown dimmed with a 'slow update' banner; after this, a neutral status screen"
+    }
   }
 }

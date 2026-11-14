@@ -57,10 +57,10 @@ def test_stale_face_is_never_shown():
     clock = [1_000_000_000]
     e, s = make(clock)
     e.frame = EngineFrame(face(), 1, 0, clock[0], 1)
-    clock[0] += 600_000_000  # > 500 ms
+    clock[0] += 11_000_000_000  # > stale_max_ms (10 s)
     img, flags = s.tick()
     assert flags & fr.FLAG_DEGRADED
-    assert img[90, 160, 1] < 150  # no green face pixels in the middle
+    assert img[90, 160, 1] < 100  # no face pixels in the middle
     assert s.frames_stale == 1
 
 
@@ -93,3 +93,27 @@ def test_fps_counter():
         c.tick(i / 30)
     assert abs(c.fps(now=45 / 30) - 30.0) < 0.01
     assert c.fps(now=45 / 30 + 2.0) == 0.0  # stalled producer
+
+
+def test_slow_updates_show_dimmed_face_with_banner_then_status():
+    clock = [1_000_000_000]
+    e, s = make(clock)
+    e.frame = EngineFrame(face(), 1, 0, clock[0], 1)
+    clock[0] += 2_000_000_000  # 2 s old: slow, not dead
+    img, flags = s.tick()
+    assert flags & fr.FLAG_DEGRADED and flags & fr.FLAG_REPEATED
+    assert 60 < img[90, 160, 1] < 200  # the face is still there, dimmed (200 * 3/5 = 120)
+    assert img[2:15, :, 2].mean() > 100  # red banner on top
+    clock[0] += 9_000_000_000  # 11 s old: neutral screen
+    img, _ = s.tick()
+    assert img[90, 160, 1] < 100
+
+
+def test_fps_counter_slow_producer():
+    from avatar_engine.metrics import FpsCounter
+
+    c = FpsCounter(window_s=20.0)
+    for i in range(4):
+        c.tick(i * 5.0)  # one face every 5 s
+    assert abs(c.fps(now=16.0) - 0.2) < 1e-6
+    assert c.fps(now=40.0) == 0.0

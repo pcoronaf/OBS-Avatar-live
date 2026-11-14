@@ -81,7 +81,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
         self.model_hashes: dict[str, str] = {}
         self.warnings: list[str] = []
         self.stages = StageTimer()
-        self.unique_fps = FpsCounter()
+        self.unique_fps = FpsCounter(window_s=20.0)  # slow CPUs may produce one face every few seconds
         self.e2e = RollingStats(10.0)
         self.proc = ProcessStats()
         self.controller: AdaptiveController | None = None
@@ -101,6 +101,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
         self.frames_in = 0
         self.frames_processed = 0
         self.last_error: str | None = None
+        self.last_face_found: bool | None = None
         self._profile_lm: np.ndarray | None = None
 
     @classmethod
@@ -243,6 +244,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
                 self.on_runtime_error(exc)
                 continue
             self.frames_processed += 1
+            self.last_face_found = res.face_found
             for k, v in res.timings_ms.items():
                 self.stages.add(k, v)
             if not res.face_found:
@@ -292,7 +294,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
             return "Error de inferencia: " + self.last_error[:90]
         if self._seq == 0 and self.frames_processed == 0:
             return "Procesando el primer cuadro..."
-        if self.no_face_frames and (self._seq == 0 or self.unique_fps.fps() == 0):
+        if self.last_face_found is False:
             return "No se detecta un rostro en la webcam (mire a la camara, buena luz)"
         return ""
 
