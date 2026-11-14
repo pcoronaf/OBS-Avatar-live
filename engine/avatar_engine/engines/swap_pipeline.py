@@ -32,7 +32,7 @@ def make_session(model_path: Path, candidate: ProviderCandidate, threads: int):
     if fault("provider") and candidate.key != "cpu":
         raise ProviderError(f"fault injection: {candidate.label} failed to initialise")
     so = ort.SessionOptions()
-    so.intra_op_num_threads = max(1, threads)
+    so.intra_op_num_threads = max(0, threads)  # 0: ONNX Runtime uses all physical cores
     so.inter_op_num_threads = 1
     so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -66,21 +66,49 @@ class Recognizer:
         return emb / (np.linalg.norm(emb) + 1e-8)
 
 
+def _emap_cache_path(model_path: Path) -> Path:
+    from avatar_engine import paths
+
+    st = model_path.stat()
+    key = f"{model_path.name}-{st.st_size}-{int(st.st_mtime)}".replace(" ", "_")
+    d = paths.data_dir() / "cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"emap_{key}.npy"
+
+
 def _load_emap(model_path: Path) -> np.ndarray | None:
+    """512x512 identity mapping embedded in inswapper-style models.
+
+    Reading it means parsing the whole (~550 MB) model with `onnx`, which is slow and needs a lot of
+    memory, so the result is cached (keyed by file name, size and mtime) after the first read."""
     sidecar = model_path.with_suffix(".emap.npy")
     if sidecar.exists():
         return np.load(sidecar).astype(np.float32)
+    try:
+        cache = _emap_cache_path(model_path)
+        if cache.exists():
+            return np.load(cache).astype(np.float32)
+    except OSError:
+        cache = None
     try:
         import onnx
         from onnx import numpy_helper
 
         graph = onnx.load(str(model_path)).graph
+        emap = None
         for init in reversed(graph.initializer):
             if list(init.dims) == [512, 512]:
-                return numpy_helper.to_array(init).astype(np.float32)
+                emap = numpy_helper.to_array(init).astype(np.float32)
+                break
+        del graph
     except Exception:
         return None
-    return None
+    if emap is not None and cache is not None:
+        try:
+            np.save(cache, emap)
+        except OSError:
+            pass
+    return emap
 
 
 class Swapper:

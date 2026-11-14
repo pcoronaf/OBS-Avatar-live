@@ -292,3 +292,21 @@ def test_status_frame_wraps_long_text():
 
     lines = _wrap("Webcam no disponible: " + "palabra " * 40, 0.7, 2, 600)
     assert 2 <= len(lines) <= 6
+
+
+def test_emap_is_cached_after_first_read(fake_models, monkeypatch):
+    from avatar_engine.engines import swap_pipeline as sp
+
+    path = fake_models["inswapper_compatible_swapper"]
+    first = sp._load_emap(path)
+    assert first is not None and sp._emap_cache_path(path).exists()
+    import onnx
+
+    monkeypatch.setattr(onnx, "load", lambda *a, **k: (_ for _ in ()).throw(AssertionError("parsed again")))
+    assert np.array_equal(sp._load_emap(path), first)
+
+
+def test_threads_zero_means_auto(fake_models):
+    from avatar_engine.engines import swap_pipeline as sp
+
+    sp.make_session(fake_models["inswapper_compatible_swapper"], CPU, 0)  # must not raise

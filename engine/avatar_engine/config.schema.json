@@ -47,7 +47,7 @@
         "benchmark_duration_seconds": { "type": "number", "minimum": 1, "maximum": 60, "default": 8 },
         "max_end_to_end_latency_ms": { "type": "number", "minimum": 50, "maximum": 2000, "default": 250 },
         "minimum_unique_swap_fps": { "type": "number", "minimum": 0.5, "maximum": 60, "default": 5 },
-        "max_threads": { "type": "integer", "minimum": 1, "maximum": 64, "default": 4 },
+        "max_threads": { "type": "integer", "minimum": 0, "maximum": 64, "default": 0, "description": "0 = all physical cores (ONNX Runtime default)" },
         "input_face_size": { "type": "integer", "enum": [128, 256, 512], "default": 256 },
         "detector_size": { "type": "integer", "enum": [320, 480, 640], "default": 640 },
         "detection_every_n_frames": { "type": "integer", "minimum": 1, "maximum": 60, "default": 6 },

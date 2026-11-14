@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "avatar-engine"
-version = "0.1.5"
+version = "0.1.6"
 description = "Out-of-process avatar engine for the OBS Avatar Live source"
 readme = "README.md"
 requires-python = ">=3.10"

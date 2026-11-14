@@ -38,7 +38,7 @@
     },
     "name": "obs-avatar-live",
     "displayName": "Avatar Live",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "author": "OBS Avatar Live contributors",
     "website": "https://github.com/pcoronaf/OBS-Avatar-live",
     "email": "noreply@example.invalid"
