@@ -60,7 +60,8 @@ def test_stale_face_is_never_shown():
     clock[0] += 11_000_000_000  # > stale_max_ms (10 s)
     img, flags = s.tick()
     assert flags & fr.FLAG_DEGRADED
-    assert img[90, 160, 1] < 100  # no face pixels in the middle
+    green = (img[..., 1] > 150) & (img[..., 0] < 50) & (img[..., 2] < 50)
+    assert green.mean() < 0.01  # no face pixels
     assert s.frames_stale == 1
 
 
@@ -106,7 +107,7 @@ def test_slow_updates_show_dimmed_face_with_banner_then_status():
     assert img[2:15, :, 2].mean() > 100  # red banner on top
     clock[0] += 9_000_000_000  # 11 s old: neutral screen
     img, _ = s.tick()
-    assert img[90, 160, 1] < 100
+    assert ((img[..., 1] > 100) & (img[..., 0] < 50)).mean() < 0.01
 
 
 def test_fps_counter_slow_producer():

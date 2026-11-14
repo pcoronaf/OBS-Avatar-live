@@ -65,12 +65,34 @@
       "commercial_use": "no",
       "bundled": false,
       "purpose": "Swap the aligned 128x128 target face using the source identity latent.",
-      "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C). FP16 (inswapper_128_fp16.onnx) is accepted and can be faster on GPUs (DirectML); FP32 is usually faster on CPU. If several are present, swapper.onnx, then inswapper_128.onnx, then the FP16 file is used.",
+      "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C).",
       "user_hint": "Copy inswapper_128.onnx (FP32, not the fp16 file) here (swapper.onnx is also accepted), then press 'Confirm model licenses' in the Avatar Live source.",
       "file_aliases": [
-        "inswapper_128.onnx",
-        "inswapper_128_fp16.onnx"
+        "inswapper_128.onnx"
       ]
+    },
+    {
+      "id": "inswapper_compatible_swapper_fp16",
+      "role": "face_swap",
+      "file": "swapper_fp16.onnx",
+      "file_aliases": [
+        "inswapper_128_fp16.onnx"
+      ],
+      "required_by": [],
+      "optional_for": [
+        "lite_adaptive",
+        "accelerated_swap"
+      ],
+      "source_url": null,
+      "version": null,
+      "sha256": null,
+      "license": "user-supplied; InsightFace inswapper_128 is non-commercial research only",
+      "license_url": "https://github.com/deepinsight/insightface#license",
+      "commercial_use": "no",
+      "bundled": false,
+      "purpose": "FP16 variant of the swap model; used on GPU providers (DirectML/OpenVINO/CUDA) when present, where it is usually faster.",
+      "user_hint": "Optional: copy inswapper_128_fp16.onnx here (keep the FP32 file too) and press 'Confirm model licenses'.",
+      "notes": "swap_precision=auto picks this file for GPU candidates and the FP32 file for CPU."
     },
     {
       "id": "dfm_face_model",

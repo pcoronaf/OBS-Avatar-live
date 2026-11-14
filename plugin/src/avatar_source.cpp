@@ -819,6 +819,9 @@ json::Value build_session_config(obs_data_t *settings)
 	obs_data_set_string(cfg, "profile_id", obs_data_get_string(settings, "profile_id"));
 	obs_data_set_string(cfg, "drive_mode", engine->drive_mode);
 	obs_data_set_string(cfg, "user_profile", user_profile.c_str());
+	// Texts drawn into the video follow OBS's language (English/Spanish; anything else -> English).
+	const char *locale = obs_get_locale();
+	obs_data_set_string(cfg, "ui_language", (locale && strncmp(locale, "es", 2) == 0) ? "es" : "en");
 	const char *video = obs_data_get_string(settings, "video_input");
 	if (video && *video)
 		obs_data_set_string(cfg, "video_input", video);

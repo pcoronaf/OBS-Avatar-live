@@ -235,6 +235,7 @@ def test_status_hint_explains_missing_avatar(profile, synthetic_face, fake_detec
     eng = LiteCpuSwapEngine(fake_pipeline_factory(fake_detector), _resolver(fake_models))
     eng.initialize(_swap_cfg(profile), {})
     eng.load_profile(profile)
+    eng.lang = "es"
     assert "webcam" in eng.status_hint().lower()  # no frames yet
     eng.frames_in, eng.frames_processed, eng.no_face_frames, eng.last_face_found = 5, 5, 5, False
     assert "rostro" in eng.status_hint()
@@ -248,10 +249,12 @@ def test_session_hint_prefers_camera_error(profile):
     class Cam:
         error = "cannot open camera 'msmf:0'"
 
-    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id},
-                None, lambda n, p: None)
+    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id,
+                 "ui_language": "es"}, None, lambda n, p: None)
     s.inputs.append(Cam())
     assert s.hint().startswith("Webcam no disponible")
+    s.lang = "en"
+    assert s.hint().startswith("Webcam not available")
 
 
 def test_camera_falls_back_to_next_api(monkeypatch):
@@ -354,6 +357,29 @@ def test_fp16_file_name_is_accepted(tmp_path, monkeypatch, fake_models):
     import shutil
 
     monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128.onnx")
     shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128_fp16.onnx")
-    manifest.acknowledge_present()
-    assert manifest.resolve("inswapper_compatible_swapper").path.name == "inswapper_128_fp16.onnx"
+    res = manifest.acknowledge_present()
+    assert {"inswapper_compatible_swapper", "inswapper_compatible_swapper_fp16"} <= {m["id"] for m in res["acknowledged"]}
+    assert manifest.resolve("inswapper_compatible_swapper").path.name == "inswapper_128.onnx"
+    assert manifest.resolve("inswapper_compatible_swapper_fp16").path.name == "inswapper_128_fp16.onnx"
+
+
+def test_swap_precision_per_provider():
+    from pathlib import Path
+
+    from avatar_engine.engines.swap_pipeline import choose_swap_model
+
+    m = {"inswapper_compatible_swapper": Path("a.onnx"), "inswapper_compatible_swapper_fp16": Path("b.onnx")}
+    gpu = ProviderCandidate("directml", "DmlExecutionProvider", "iGPU")
+    assert choose_swap_model(m, gpu) == Path("b.onnx")
+    assert choose_swap_model(m, CPU) == Path("a.onnx")
+    assert choose_swap_model(m, gpu, "fp32") == Path("a.onnx")
+    assert choose_swap_model({"inswapper_compatible_swapper_fp16": Path("b.onnx")}, CPU) == Path("b.onnx")
+
+
+def test_texts_follow_language():
+    from avatar_engine.i18n import t
+
+    assert t("no_face", "es-ES").startswith("No se detecta")
+    assert t("no_face", "en-US").startswith("No face")

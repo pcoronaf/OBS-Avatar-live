@@ -266,6 +266,7 @@ void EngineController::send_start_session(IpcClient &c)
 		std::lock_guard<std::mutex> lock(mutex_);
 		start_inflight_ = true;
 		config_dirty_ = false;
+		status_.fallback_reason.clear(); // belongs to the previous session
 		set_state("starting");
 		cfg = config_;
 	}

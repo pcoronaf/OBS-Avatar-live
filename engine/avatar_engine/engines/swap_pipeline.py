@@ -228,6 +228,18 @@ def build_pipeline(candidate: ProviderCandidate, models: dict[str, Path], thread
     if detector.backend != "yunet":
         raise ModelError("the face-swap engines need the YuNet detector model (landmarks for alignment)")
     rec = Recognizer(make_session(models["arcface_recognition"], candidate, threads))
-    sw = Swapper(make_session(models["inswapper_compatible_swapper"], candidate, threads),
-                 models["inswapper_compatible_swapper"])
+    swap_path = choose_swap_model(models, candidate, (options or {}).get("swap_precision", "auto"))
+    sw = Swapper(make_session(swap_path, candidate, threads), swap_path)
     return SwapPipeline(detector, rec, sw, detection_every_n_frames)
+
+
+def choose_swap_model(models: dict, candidate: ProviderCandidate, precision: str = "auto") -> Path:
+    """FP16 is usually faster on GPUs (DirectML/OpenVINO/CUDA) and slower on CPU; pick per provider."""
+    fp32, fp16 = models.get("inswapper_compatible_swapper"), models.get("inswapper_compatible_swapper_fp16")
+    if precision == "fp16" and fp16:
+        return fp16
+    if precision == "fp32" and fp32:
+        return fp32
+    if candidate.key != "cpu" and fp16:
+        return fp16
+    return fp32 or fp16

@@ -16,6 +16,7 @@ from typing import Callable
 import numpy as np
 
 from avatar_engine import frame_ring as fr
+from avatar_engine.i18n import t
 from avatar_engine.engines.base import EngineFrame, IAvatarEngine
 from avatar_engine.metrics import FpsCounter, RollingStats
 from avatar_engine.overlay import DisclosureLabel, status_frame
@@ -37,21 +38,31 @@ class Compositor:
             self._status_cache[key] = status_frame(self.width, self.height, title, detail)
         return self._status_cache[key].copy()
 
-    def slow_banner(self, bgra: np.ndarray, rate: float) -> np.ndarray:
-        """Last face, dimmed, with a visible banner: it is never passed off as a current image."""
+    def slow_banner(self, bgra: np.ndarray, rate: float, lang: str | None = None, key=None) -> np.ndarray:
+        """Last face, dimmed, with a visible banner: it is never passed off as a current image.
+        Cached per (frame, rate) so a slow engine does not cost a full-frame dim on every tick."""
         import cv2
 
-        img = (bgra.astype(np.uint16) * 3 // 5).astype(np.uint8)
+        cache_key = (key, round(rate, 1), lang)
+        if key is not None and getattr(self, "_banner_key", None) == cache_key:
+            return self._banner_img.copy()
+        img = cv2.convertScaleAbs(bgra, alpha=0.6)
         h, w = img.shape[:2]
         s = max(h / 720.0, 0.35)
         bh = int(56 * s)
         img[:bh, :, :3] = (30, 30, 150)
         img[:bh, :, 3] = 255
-        txt = "Actualizacion lenta: imagen no actual" + (f" ({rate:.1f} cuadros/s)" if rate > 0 else "")
+        from avatar_engine.overlay import _ascii_fold
+
+        txt = _ascii_fold(t("slow_banner", lang) + (f" ({rate:.1f} {t('faces_per_s', lang)})" if rate > 0 else ""))
         fs, th = 0.8 * s, max(1, int(2 * s))
         (tw, tht), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
         cv2.putText(img, txt, ((w - tw) // 2, (bh + tht) // 2), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255, 255),
                     th, cv2.LINE_AA)
+        img[..., 3] = 255
+        if key is not None:
+            self._banner_key, self._banner_img = cache_key, img
+            return img.copy()
         return img
 
     def finalize(self, bgra: np.ndarray) -> np.ndarray:
@@ -80,6 +91,7 @@ class OutputScheduler:
         self.stale_max_ns = max(self.stale_ns, int(config.get("stale_max_ms", 10000) * 1e6))
         self._seq_times: list[int] = []
         self.compositor = Compositor(out["width"], out["height"], config.get("privacy", {}))
+        self.lang = config.get("ui_language", "auto")
         self.clock = clock
         self.output_fps = FpsCounter()
         self.capture_to_output = RollingStats(10.0)
@@ -116,16 +128,16 @@ class OutputScheduler:
                         hint = self.hint_fn()
                     except Exception:
                         hint = ""
-                img = self.compositor.status("Avatar Live", hint or "Iniciando motor...")
+                img = self.compositor.status("Avatar Live", hint or t("starting", self.lang))
                 flags |= fr.FLAG_DEGRADED
             elif now - ef.created_ts_ns > self.stale_max_ns:
-                img = self.compositor.status("Avatar Live: señal degradada",
-                                             "El avatar no se está actualizando")
+                img = self.compositor.status(t("degraded_title", self.lang), t("degraded_detail", self.lang))
                 flags |= fr.FLAG_DEGRADED
                 self.frames_stale += 1
             elif now - ef.created_ts_ns > self.stale_ns:
                 self._note_seq(ef.sequence, ef.created_ts_ns)
-                img = self.compositor.slow_banner(ef.bgra, self.unique_rate())
+                img = self.compositor.slow_banner(ef.bgra, self.unique_rate(), self.lang,
+                                                  key=(ef.generation_id, ef.sequence))
                 flags |= fr.FLAG_DEGRADED | fr.FLAG_REPEATED
                 self.frames_stale += 1
                 self.frames_repeated += 1

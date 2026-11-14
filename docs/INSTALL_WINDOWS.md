@@ -41,6 +41,9 @@ licencia **usted** debe aceptar (ver [LICENSE_REVIEW.md](LICENSE_REVIEW.md)):
 
 Los ids y nombres de archivo esperados están en [`models/MODEL_MANIFEST.json`](../models/MODEL_MANIFEST.json).
 
+Opcional: `inswapper_128_fp16.onnx` (o `swapper_fp16.onnx`) junto al FP32. *Lite Adaptive* usa el FP16 con la
+GPU/iGPU (DirectML), donde suele ser más rápido, y el FP32 con la CPU (`inference.swap_precision = auto`).
+
 Puede dejar los archivos con su nombre original (`inswapper_128.onnx`, `w600k_r50.onnx`) o usar
 `swapper.onnx` / `recognition.onnx`. Mientras un modelo no esté auditado (`sha256: null` en el manifiesto), el
 motor **se niega a cargarlo** hasta que usted confirme su licencia para ese archivo concreto (queda ligada a su

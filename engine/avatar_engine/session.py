@@ -9,6 +9,7 @@ from typing import Any, Callable
 from avatar_engine import config as cfgmod
 from avatar_engine import engine_factory, frame_ring as fr
 from avatar_engine.engines.base import IAvatarEngine
+from avatar_engine.i18n import t
 from avatar_engine.metrics import ProcessStats
 from avatar_engine.performance.provider_probe import fault
 from avatar_engine.privacy import profile_store
@@ -29,6 +30,8 @@ class Session:
         self.session_id = "s-" + uuid.uuid4().hex[:12]
         self.engine = engine or engine_factory.create(self.config["engine"])
         self.engine.emit = emit  # type: ignore[attr-defined]
+        self.lang = self.config.get("ui_language", "auto")
+        self.engine.lang = self.lang  # type: ignore[attr-defined]
         self.profile = profile_store.load_profile(self.config["profile_id"], profile_root)  # requires consent
         self.inputs: list[Any] = []
         self.scheduler: OutputScheduler | None = None
@@ -96,7 +99,7 @@ class Session:
         for i in self.inputs:
             err = getattr(i, "error", None)
             if err:
-                return "Webcam no disponible: " + str(err)[:240]
+                return t("webcam_unavailable", self.lang) + str(err)[:240]
         fn = getattr(self.engine, "status_hint", None)
         return fn() if fn else ""
 
@@ -115,7 +118,7 @@ class Session:
     def pause(self, paused: bool) -> None:
         self.engine.pause(paused)
         if self.scheduler:
-            self.scheduler.forced_status = ("Avatar Live en pausa", "") if paused else None
+            self.scheduler.forced_status = (t("paused", self.lang), "") if paused else None
         if self.writer is not None:
             self.writer.set_ring_flags(fr.RING_RUNNING | (fr.RING_PAUSED if paused else 0))
         self.state = "paused" if paused else "running"

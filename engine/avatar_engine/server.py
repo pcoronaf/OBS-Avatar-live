@@ -14,6 +14,7 @@ from avatar_engine import PROTOCOL_VERSION, __version__, engine_factory, frame_r
 from avatar_engine.audio.capture import AudioUnavailable
 from avatar_engine.config import ConfigError
 from avatar_engine.engines.base import EngineUnavailable
+from avatar_engine.i18n import t as tr
 from avatar_engine.overlay import DisclosureLabel, status_frame
 from avatar_engine.privacy import profile_store
 from avatar_engine.privacy.consent import ConsentError
@@ -54,7 +55,8 @@ class EngineServer:
         self._stop = threading.Event()
         self._op_lock = threading.Lock()
         self._label = DisclosureLabel()
-        self._idle_detail = "Detenido"
+        self.lang = "auto"  # system UI language until a session config says otherwise
+        self._idle_detail = tr("stopped", self.lang)
         self._shutdown_requested = False
 
     # -- events ---------------------------------------------------------------------------
@@ -159,7 +161,7 @@ class EngineServer:
         if t == "start_session":
             return self._start(p)
         if t == "stop_session":
-            self._stop_session("Detenido", "stop requested by the plugin (Stop button or settings changed)")
+            self._stop_session(tr("stopped", self.lang), "stop requested by the plugin (Stop button or settings changed)")
             return {}
         if t in ("pause", "resume", "freeze_neutral", "set_expression", "set_quality", "get_metrics"):
             s = self.session
@@ -190,14 +192,15 @@ class EngineServer:
 
         with self._op_lock:
             self._stop_session(None, "new session requested")
+            self.lang = (cfg or {}).get("ui_language", self.lang) if isinstance(cfg, dict) else self.lang
+            self._idle_detail = tr("launching", self.lang)
             s = Session(cfg, self.writer, self.emit, profile_root=self.profile_root)
-            self._idle_detail = "Iniciando..."
             try:
                 result = s.start()
             except Exception as exc:
                 log.error("session start failed: %s", exc)
                 s.stop()
-                self._idle_detail = "Error al iniciar"
+                self._idle_detail = tr("start_failed", self.lang)
                 self.emit("error", {"code": "start_failed", "message": str(exc), "recoverable": True})
                 raise
             self.session = s
