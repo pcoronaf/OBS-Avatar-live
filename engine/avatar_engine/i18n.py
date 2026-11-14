@@ -18,6 +18,7 @@ STRINGS = {
     "degraded_title": {"en": "Avatar Live: degraded signal", "es": "Avatar Live: señal degradada"},
     "degraded_detail": {"en": "The avatar is not updating", "es": "El avatar no se está actualizando"},
     "slow_banner": {"en": "Slow update: image is not current", "es": "Actualización lenta: imagen no actual"},
+    "slow_badge": {"en": "Slow avatar:", "es": "Avatar lento:"},
     "faces_per_s": {"en": "faces/s", "es": "cuadros/s"},
     "webcam_unavailable": {"en": "Webcam not available: ", "es": "Webcam no disponible: "},
     "waiting_webcam": {"en": "Waiting for the webcam image...", "es": "Esperando imagen de la webcam..."},

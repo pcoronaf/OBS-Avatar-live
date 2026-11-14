@@ -31,6 +31,13 @@ def cmd_serve(a) -> int:
     logging.basicConfig(filename=str(paths.logs_dir() / "engine.log"), level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     token = os.environ.pop("AVATAR_LIVE_AUTH_TOKEN", "")
+    if sys.platform == "win32":  # 1 ms timer: the default 15.6 ms makes a 30 fps clock oversleep (~15 fps)
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
     logging.getLogger("avatar_engine").info("engine %s started (session %s)", __version__, a.session[:8])
     srv = EngineServer(a.session, token, a.parent_pid, a.max_width, a.max_height)
     srv.serve_forever()

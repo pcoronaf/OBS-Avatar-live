@@ -26,6 +26,15 @@ class ProviderError(RuntimeError):
     pass
 
 
+def is_provider_error(exc: BaseException) -> bool:
+    """True if the failure came from ONNX Runtime / the execution provider (worth falling back to CPU),
+    False for errors in our own pre/post-processing (OpenCV, numpy), which a provider switch won't fix."""
+    if isinstance(exc, ProviderError):
+        return True
+    mod = type(exc).__module__ or ""
+    return mod.startswith("onnxruntime")
+
+
 def make_session(model_path: Path, candidate: ProviderCandidate, threads: int):
     import onnxruntime as ort
 

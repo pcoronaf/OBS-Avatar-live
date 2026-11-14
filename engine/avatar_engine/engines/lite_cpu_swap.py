@@ -249,8 +249,12 @@ class LiteCpuSwapEngine(IAvatarEngine):
             self._last_inference_start = time.monotonic()
             try:
                 res = self.pipeline.process(frame)
-            except Exception as exc:  # provider/device failure
+            except Exception as exc:  # provider/device failure, or a pre/post-processing error
                 self.on_runtime_error(exc)
+                try:
+                    self.pipeline.tracker.reset()  # start the next frame from a clean detection
+                except Exception:
+                    pass
                 continue
             self.frames_processed += 1
             self.last_face_found = res.face_found

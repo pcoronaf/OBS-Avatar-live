@@ -164,8 +164,12 @@ def test_runtime_errors_fall_back_to_cpu(profile, fake_detector, fake_models):
     eng.emit = lambda n, p: events.append((n, p))
     eng.candidate = ProviderCandidate("openvino", "OpenVINOExecutionProvider", "GPU")  # pretend we run on a GPU
     gen = eng.generation_id
+    import cv2
+
+    eng.on_runtime_error(cv2.error("tracking bug"))  # not the provider's fault: must not switch
+    assert eng.candidate.key == "openvino"
     for _ in range(3):
-        eng.on_runtime_error(RuntimeError("device removed"))
+        eng.on_runtime_error(sp.ProviderError("device removed"))
     assert eng.candidate.key == "cpu" and eng.generation_id != gen
     assert any(n == "fallback" for n, _ in events)
 
@@ -383,3 +387,25 @@ def test_texts_follow_language():
 
     assert t("no_face", "es-ES").startswith("No se detecta")
     assert t("no_face", "en-US").startswith("No face")
+
+
+def test_tracker_survives_resolution_change(fake_detector, synthetic_face):
+    import cv2
+
+    from avatar_engine.vision.face_tracking import FaceTracker
+
+    img, _, _ = synthetic_face
+    tr = FaceTracker(fake_detector, detect_every=6)
+    tr.update(img)
+    small = cv2.resize(img, (img.shape[1], img.shape[0] * 3 // 4))
+    assert tr.update(small) is not None  # no OpenCV assertion: re-detects instead of tracking
+
+
+def test_opencv_errors_do_not_trigger_provider_fallback():
+    import cv2
+
+    from avatar_engine.engines.swap_pipeline import ProviderError, is_provider_error
+
+    assert is_provider_error(ProviderError("x"))
+    assert not is_provider_error(cv2.error("lkpyramid"))
+    assert not is_provider_error(ValueError("x"))
