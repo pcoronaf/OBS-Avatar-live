@@ -79,7 +79,8 @@ def save_cached(key: str, results: list[BenchmarkResult]) -> Path:
 
 def benchmark_candidate(candidate: ProviderCandidate, build: Callable[[ProviderCandidate], object],
                         frames: list[np.ndarray], duration_s: float, reference: np.ndarray | None = None,
-                        probe_crop: np.ndarray | None = None) -> tuple[BenchmarkResult, np.ndarray | None]:
+                        probe_crop: np.ndarray | None = None,
+                        give_up_ms: float = 2000.0) -> tuple[BenchmarkResult, np.ndarray | None]:
     """`build(candidate)` returns a ready SwapPipeline with its source identity set."""
     stats = ProcessStats()
     ram0 = stats.ram_mb()
@@ -94,7 +95,7 @@ def benchmark_candidate(candidate: ProviderCandidate, build: Callable[[ProviderC
     res.init_ms = (time.perf_counter() - t0) * 1000
     out_probe = None
     try:
-        for f in frames[:3]:  # warm-up (graph compilation, allocations)
+        for f in frames[:2]:  # warm-up (graph compilation, allocations)
             pipe.process(f)
         if probe_crop is not None:
             out_probe = pipe.probe(probe_crop)
@@ -106,7 +107,9 @@ def benchmark_candidate(candidate: ProviderCandidate, build: Callable[[ProviderC
         stats.cpu_pct()
         end = time.perf_counter() + duration_s
         i = 0
-        while time.perf_counter() < end or i < 5:
+        while time.perf_counter() < end or i < 3:
+            if i >= 1 and totals[-1] > give_up_ms:
+                break  # far too slow to be viable: one measured frame is enough (keeps startup short)
             f = frames[i % len(frames)]
             s = time.perf_counter()
             r = pipe.process(f)
@@ -168,10 +171,13 @@ def select(results: list[BenchmarkResult], max_latency_ms: float, min_unique_fps
         else:
             viable.append(r)
     if not viable:
-        cpu = next((r for r in results if r.candidate["key"] == "cpu" and r.ok), None)
-        if cpu:
-            reasons.append("no candidate met the limits; using CPU in degraded mode")
-        return cpu, reasons
+        working = [r for r in results if r.ok and not (r.max_abs_diff_vs_cpu is not None and
+                                                         r.max_abs_diff_vs_cpu > max_diff)]
+        best = max(working, key=lambda r: r.unique_fps, default=None)
+        if best:
+            reasons.append(f"no candidate met the limits; using the fastest ({best.label}, "
+                           f"{best.unique_fps:.2f} faces/s) in degraded mode")
+        return best, reasons
 
     cpu_ref = next((r for r in viable if r.candidate["key"] == "cpu"), None)
 

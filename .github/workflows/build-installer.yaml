@@ -58,8 +58,9 @@ jobs:
           $rel = [IO.Path]::GetRelativePath((Get-Location).Path, $dll.DirectoryName)
           "dir=$rel" >> $env:GITHUB_OUTPUT
 
+      # DirectML build: CPU + any DirectX 12 GPU (incl. Intel/AMD integrated); never CUDA in Lite.
       - name: Build engine (PyInstaller, Lite) 🐍
-        run: installer/windows/build_engine.ps1 -Variant Lite -Backend cpu -Python python
+        run: installer/windows/build_engine.ps1 -Variant Lite -Backend directml -Python python
 
       - name: Install Inno Setup
         run: |
@@ -94,6 +95,10 @@ jobs:
           if (Test-Path (Join-Path $root 'bin')) { throw 'legacy bin\64bit folder present in OBS 33+ layout' }
           & (Join-Path $root 'data\engine\avatar-engine.exe') selftest
           if ($LASTEXITCODE -ne 0) { throw 'installed engine selftest failed' }
+          $probe = & (Join-Path $root 'data\engine\avatar-engine.exe') probe --json | Out-String | ConvertFrom-Json
+          Write-Host "ONNX Runtime providers: $($probe.ort_providers_installed -join ', ')"
+          if ($probe.ort_providers_installed -notcontains 'DmlExecutionProvider') { throw 'DirectML provider missing from the Lite engine' }
+          if ($probe.ort_providers_installed -contains 'CUDAExecutionProvider') { throw 'CUDA must not ship in the Lite engine' }
           Write-Host "Installed layout OK under $root"
 
       - name: Upload installer artifact 📡

@@ -37,6 +37,23 @@ class Compositor:
             self._status_cache[key] = status_frame(self.width, self.height, title, detail)
         return self._status_cache[key].copy()
 
+    def slow_banner(self, bgra: np.ndarray, rate: float) -> np.ndarray:
+        """Last face, dimmed, with a visible banner: it is never passed off as a current image."""
+        import cv2
+
+        img = (bgra.astype(np.uint16) * 3 // 5).astype(np.uint8)
+        h, w = img.shape[:2]
+        s = max(h / 720.0, 0.35)
+        bh = int(56 * s)
+        img[:bh, :, :3] = (30, 30, 150)
+        img[:bh, :, 3] = 255
+        txt = "Actualizacion lenta: imagen no actual" + (f" ({rate:.1f} cuadros/s)" if rate > 0 else "")
+        fs, th = 0.8 * s, max(1, int(2 * s))
+        (tw, tht), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+        cv2.putText(img, txt, ((w - tw) // 2, (bh + tht) // 2), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255, 255),
+                    th, cv2.LINE_AA)
+        return img
+
     def finalize(self, bgra: np.ndarray) -> np.ndarray:
         if bgra.shape[0] != self.height or bgra.shape[1] != self.width:
             import cv2
@@ -58,6 +75,10 @@ class OutputScheduler:
         self.fps = out["fps"]
         self.period_ns = int(1e9 / self.fps)
         self.stale_ns = int(config.get("stale_frame_ms", 500) * 1e6)
+        # Between stale_frame_ms and stale_max_ms the last face is shown dimmed with a visible
+        # "slow update" banner; after stale_max_ms it is replaced by a neutral status screen.
+        self.stale_max_ns = max(self.stale_ns, int(config.get("stale_max_ms", 10000) * 1e6))
+        self._seq_times: list[int] = []
         self.compositor = Compositor(out["width"], out["height"], config.get("privacy", {}))
         self.clock = clock
         self.output_fps = FpsCounter()
@@ -97,12 +118,19 @@ class OutputScheduler:
                         hint = ""
                 img = self.compositor.status("Avatar Live", hint or "Iniciando motor...")
                 flags |= fr.FLAG_DEGRADED
-            elif now - ef.created_ts_ns > self.stale_ns:
+            elif now - ef.created_ts_ns > self.stale_max_ns:
                 img = self.compositor.status("Avatar Live: señal degradada",
                                              "El avatar no se está actualizando")
                 flags |= fr.FLAG_DEGRADED
                 self.frames_stale += 1
+            elif now - ef.created_ts_ns > self.stale_ns:
+                self._note_seq(ef.sequence, ef.created_ts_ns)
+                img = self.compositor.slow_banner(ef.bgra, self.unique_rate())
+                flags |= fr.FLAG_DEGRADED | fr.FLAG_REPEATED
+                self.frames_stale += 1
+                self.frames_repeated += 1
             else:
+                self._note_seq(ef.sequence, ef.created_ts_ns)
                 img = ef.bgra if ef.owned else ef.bgra.copy()  # reused frames must stay clean
                 repeated = ef.sequence == self._last_seq
                 self._last_seq = ef.sequence
@@ -128,6 +156,17 @@ class OutputScheduler:
         self.frames_out += 1
         self.output_fps.tick()
         return img, flags
+
+    def _note_seq(self, seq: int, created_ns: int) -> None:
+        if not self._seq_times or self._seq_times[-1] != created_ns:
+            self._seq_times.append(created_ns)
+            del self._seq_times[:-6]
+
+    def unique_rate(self) -> float:
+        t = self._seq_times
+        if len(t) < 2 or t[-1] <= t[0]:
+            return 0.0
+        return (len(t) - 1) / ((t[-1] - t[0]) / 1e9)
 
     def repeated_pct(self) -> float:
         return 100.0 * sum(self._recent) / len(self._recent) if self._recent else 0.0

@@ -236,7 +236,7 @@ def test_status_hint_explains_missing_avatar(profile, synthetic_face, fake_detec
     eng.initialize(_swap_cfg(profile), {})
     eng.load_profile(profile)
     assert "webcam" in eng.status_hint().lower()  # no frames yet
-    eng.frames_in, eng.frames_processed, eng.no_face_frames = 5, 5, 5
+    eng.frames_in, eng.frames_processed, eng.no_face_frames, eng.last_face_found = 5, 5, 5, False
     assert "rostro" in eng.status_hint()
     eng.last_error = "RuntimeError: boom"
     assert "boom" in eng.status_hint()
