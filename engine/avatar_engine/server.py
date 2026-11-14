@@ -88,8 +88,20 @@ class EngineServer:
                 self.stop()
 
     def _metrics_loop(self) -> None:
+        ticks = 0
         while not self._stop.wait(1.0):
             s = self.session
+            ticks += 1
+            if s is not None and ticks % 30 == 0:  # performance trail in engine.log every 30 s
+                try:
+                    m = s.metrics()
+                    log.info("perf: engine=%s provider=%s device=%s faces/s=%s output_fps=%s stage_p95_ms=%s "
+                             "capture_to_output_p95_ms=%s cpu=%s%% ram=%sMB", m.get("engine"),
+                             m.get("execution_provider_selected"), m.get("provider_device"),
+                             m.get("face_swap_unique_fps"), m.get("output_fps"), m.get("stage_p95_ms"),
+                             m.get("capture_to_output_p95_ms"), m.get("cpu_utilization_pct"), m.get("ram_mb"))
+                except Exception as exc:
+                    log.debug("perf log failed: %s", exc)
             if s is not None and self.conn is not None:
                 try:
                     s.publish_hint()

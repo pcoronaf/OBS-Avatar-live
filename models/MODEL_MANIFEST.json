@@ -65,10 +65,11 @@
       "commercial_use": "no",
       "bundled": false,
       "purpose": "Swap the aligned 128x128 target face using the source identity latent.",
-      "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C).",
+      "notes": "Flagged non-commercial (InsightFace). FP32 is preferred on CPU; do not assume FP16 is optimal. Not usable for public/commercial releases without a separate license (strategy B/C). FP16 (inswapper_128_fp16.onnx) is accepted and can be faster on GPUs (DirectML); FP32 is usually faster on CPU. If several are present, swapper.onnx, then inswapper_128.onnx, then the FP16 file is used.",
       "user_hint": "Copy inswapper_128.onnx (FP32, not the fp16 file) here (swapper.onnx is also accepted), then press 'Confirm model licenses' in the Avatar Live source.",
       "file_aliases": [
-        "inswapper_128.onnx"
+        "inswapper_128.onnx",
+        "inswapper_128_fp16.onnx"
       ]
     },
     {

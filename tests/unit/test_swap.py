@@ -337,3 +337,23 @@ def test_camera_rides_out_short_read_hiccups(monkeypatch):
         time.sleep(0.01)
     cam.stop()
     assert got and cam.error is None  # never gave the device up
+
+
+def test_fp16_swap_model(tmp_path):
+    from avatar_engine.engines import swap_pipeline as sp
+    from tests_helpers import make_fake_fp16_swapper
+
+    path = make_fake_fp16_swapper(tmp_path / "inswapper_128_fp16.onnx")
+    sw = sp.Swapper(sp.make_session(path, CPU, 1), path)
+    assert sw.target_dtype == np.float16 and sw.latent_dtype == np.float16
+    y = sw.run(np.full((128, 128, 3), 128, np.uint8), sw.latent(np.ones(512, np.float32)))
+    assert y.dtype == np.float32 and abs(float(y.mean()) - 128 / 255) < 1e-2
+
+
+def test_fp16_file_name_is_accepted(tmp_path, monkeypatch, fake_models):
+    import shutil
+
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128_fp16.onnx")
+    manifest.acknowledge_present()
+    assert manifest.resolve("inswapper_compatible_swapper").path.name == "inswapper_128_fp16.onnx"

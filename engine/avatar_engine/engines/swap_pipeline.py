@@ -117,12 +117,16 @@ class Swapper:
     def __init__(self, session, model_path: Path) -> None:
         self.sess = session
         self.target_name = self.latent_name = None
+        self.target_dtype = self.latent_dtype = np.float32
         for inp in session.get_inputs():
+            dtype = np.float16 if "float16" in (inp.type or "") else np.float32  # FP16 models (e.g. *_fp16.onnx)
             if len(inp.shape) == 4:
                 self.target_name = inp.name
+                self.target_dtype = dtype
                 self.size = int(inp.shape[2]) if isinstance(inp.shape[2], int) else 128
             else:
                 self.latent_name = inp.name
+                self.latent_dtype = dtype
                 self.latent_dim = int(inp.shape[1]) if isinstance(inp.shape[1], int) else 512
         if self.target_name is None or self.latent_name is None:
             raise ModelError("swap model must have an image input and a latent input")
@@ -141,8 +145,9 @@ class Swapper:
 
     def run(self, crop_bgr: np.ndarray, latent: np.ndarray) -> np.ndarray:
         x = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB).astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-        y = self.sess.run([self.output_name], {self.target_name: x, self.latent_name: latent})[0][0]
-        return y
+        feeds = {self.target_name: x.astype(self.target_dtype), self.latent_name: latent.astype(self.latent_dtype)}
+        y = self.sess.run([self.output_name], feeds)[0][0]
+        return y.astype(np.float32)
 
     @staticmethod
     def to_bgr(y: np.ndarray) -> np.ndarray:

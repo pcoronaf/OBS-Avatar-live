@@ -243,13 +243,13 @@ class CameraCapture:
                 ok, frame = self.cap.read()
                 if not ok or frame is None:
                     # Momentary hiccups are common (DirectShow under heavy CPU load); reopening costs
-                    # 5-8 s, so retry for ~1 s before giving the device up.
+                    # 5-8 s, so retry for ~2 s before giving the device up.
                     self.read_failures += 1
-                    if self.read_failures < 20:
+                    if self.read_failures < 40:
                         self._stop.wait(0.05)
                         continue
                     self.read_failures = 0
-                    raise CameraUnavailable("camera read failed for ~1 s")
+                    raise CameraUnavailable("camera read failed for ~2 s")
                 if self.read_failures:
                     log.info("camera %r recovered after %d failed reads", self.device, self.read_failures)
                     self.read_failures = 0
