@@ -16,9 +16,13 @@ from typing import Callable
 import numpy as np
 
 from avatar_engine import frame_ring as fr
+from avatar_engine.i18n import t
 from avatar_engine.engines.base import EngineFrame, IAvatarEngine
 from avatar_engine.metrics import FpsCounter, RollingStats
 from avatar_engine.overlay import DisclosureLabel, status_frame
+
+
+SLOW_RATE = 5.0  # faces/s below which the "slow update" badge is shown
 
 
 class Compositor:
@@ -37,22 +41,27 @@ class Compositor:
             self._status_cache[key] = status_frame(self.width, self.height, title, detail)
         return self._status_cache[key].copy()
 
-    def slow_banner(self, bgra: np.ndarray, rate: float) -> np.ndarray:
-        """Last face, dimmed, with a visible banner: it is never passed off as a current image."""
+    def rate_badge(self, bgra: np.ndarray, rate: float, lang: str | None = None) -> np.ndarray:
+        """Small fixed badge (top-right) while the avatar updates slowly. It stays on steadily, so it does
+        not blink with each new face, and it makes clear the picture is not live video."""
         import cv2
 
-        img = (bgra.astype(np.uint16) * 3 // 5).astype(np.uint8)
-        h, w = img.shape[:2]
+        from avatar_engine.overlay import _ascii_fold
+
+        h, w = bgra.shape[:2]
         s = max(h / 720.0, 0.35)
-        bh = int(56 * s)
-        img[:bh, :, :3] = (30, 30, 150)
-        img[:bh, :, 3] = 255
-        txt = "Actualizacion lenta: imagen no actual" + (f" ({rate:.1f} cuadros/s)" if rate > 0 else "")
-        fs, th = 0.8 * s, max(1, int(2 * s))
-        (tw, tht), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
-        cv2.putText(img, txt, ((w - tw) // 2, (bh + tht) // 2), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255, 255),
-                    th, cv2.LINE_AA)
-        return img
+        txt = _ascii_fold(t("slow_badge", lang) + (f" {rate:.1f} {t('faces_per_s', lang)}" if rate > 0 else ""))
+        fs, th = 0.6 * s, max(1, int(2 * s))
+        (tw, tht), base = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+        pad, margin = int(8 * s), int(14 * s)
+        x1, y0 = w - margin, margin
+        x0, y1 = max(0, x1 - tw - 2 * pad), y0 + tht + base + 2 * pad
+        roi = bgra[y0:y1, x0:x1, :3]
+        roi[:] = (roi.astype(np.uint16) * 2 // 5 + np.array([0, 60, 150], np.uint16) * 3 // 5).astype(np.uint8)
+        bgra[y0:y1, x0:x1, 3] = 255
+        cv2.putText(bgra, txt, (x0 + pad, y0 + pad + tht), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255, 255), th,
+                    cv2.LINE_AA)
+        return bgra
 
     def finalize(self, bgra: np.ndarray) -> np.ndarray:
         if bgra.shape[0] != self.height or bgra.shape[1] != self.width:
@@ -80,6 +89,7 @@ class OutputScheduler:
         self.stale_max_ns = max(self.stale_ns, int(config.get("stale_max_ms", 10000) * 1e6))
         self._seq_times: list[int] = []
         self.compositor = Compositor(out["width"], out["height"], config.get("privacy", {}))
+        self.lang = config.get("ui_language", "auto")
         self.clock = clock
         self.output_fps = FpsCounter()
         self.capture_to_output = RollingStats(10.0)
@@ -116,22 +126,26 @@ class OutputScheduler:
                         hint = self.hint_fn()
                     except Exception:
                         hint = ""
-                img = self.compositor.status("Avatar Live", hint or "Iniciando motor...")
+                img = self.compositor.status("Avatar Live", hint or t("starting", self.lang))
                 flags |= fr.FLAG_DEGRADED
             elif now - ef.created_ts_ns > self.stale_max_ns:
-                img = self.compositor.status("Avatar Live: señal degradada",
-                                             "El avatar no se está actualizando")
+                img = self.compositor.status(t("degraded_title", self.lang), t("degraded_detail", self.lang))
                 flags |= fr.FLAG_DEGRADED
                 self.frames_stale += 1
             elif now - ef.created_ts_ns > self.stale_ns:
+                # Slow but alive: keep the last face (no dimming, no flashing) with the steady rate badge.
                 self._note_seq(ef.sequence, ef.created_ts_ns)
-                img = self.compositor.slow_banner(ef.bgra, self.unique_rate())
+                img = self.compositor.rate_badge(ef.bgra.copy(), self.unique_rate(), self.lang)
                 flags |= fr.FLAG_DEGRADED | fr.FLAG_REPEATED
                 self.frames_stale += 1
                 self.frames_repeated += 1
             else:
                 self._note_seq(ef.sequence, ef.created_ts_ns)
                 img = ef.bgra if ef.owned else ef.bgra.copy()  # reused frames must stay clean
+                rate = self.unique_rate()
+                if ef.capture_ts_ns and 0 < rate < SLOW_RATE:
+                    # Same badge on fresh faces too, so it never blinks on and off between updates.
+                    img = self.compositor.rate_badge(img, rate, self.lang)
                 repeated = ef.sequence == self._last_seq
                 self._last_seq = ef.sequence
                 if repeated:

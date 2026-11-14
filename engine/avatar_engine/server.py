@@ -14,6 +14,7 @@ from avatar_engine import PROTOCOL_VERSION, __version__, engine_factory, frame_r
 from avatar_engine.audio.capture import AudioUnavailable
 from avatar_engine.config import ConfigError
 from avatar_engine.engines.base import EngineUnavailable
+from avatar_engine.i18n import t as tr
 from avatar_engine.overlay import DisclosureLabel, status_frame
 from avatar_engine.privacy import profile_store
 from avatar_engine.privacy.consent import ConsentError
@@ -54,7 +55,8 @@ class EngineServer:
         self._stop = threading.Event()
         self._op_lock = threading.Lock()
         self._label = DisclosureLabel()
-        self._idle_detail = "Detenido"
+        self.lang = "auto"  # system UI language until a session config says otherwise
+        self._idle_detail = tr("stopped", self.lang)
         self._shutdown_requested = False
 
     # -- events ---------------------------------------------------------------------------
@@ -83,13 +85,25 @@ class EngineServer:
 
     def _watch_parent(self) -> None:
         while not self._stop.wait(1.0):
-            if self.parent_pid and not process_alive(self.parent_pid):
+            if self.parent_pid and not process_alive(self.parent_pid):  # OBS closed or crashed
                 log.warning("parent process %s exited; shutting down", self.parent_pid)
                 self.stop()
 
     def _metrics_loop(self) -> None:
+        ticks = 0
         while not self._stop.wait(1.0):
             s = self.session
+            ticks += 1
+            if s is not None and ticks % 30 == 0:  # performance trail in engine.log every 30 s
+                try:
+                    m = s.metrics()
+                    log.info("perf: engine=%s provider=%s device=%s faces/s=%s output_fps=%s stage_p95_ms=%s "
+                             "capture_to_output_p95_ms=%s cpu=%s%% ram=%sMB", m.get("engine"),
+                             m.get("execution_provider_selected"), m.get("provider_device"),
+                             m.get("face_swap_unique_fps"), m.get("output_fps"), m.get("stage_p95_ms"),
+                             m.get("capture_to_output_p95_ms"), m.get("cpu_utilization_pct"), m.get("ram_mb"))
+                except Exception as exc:
+                    log.debug("perf log failed: %s", exc)
             if s is not None and self.conn is not None:
                 try:
                     s.publish_hint()
@@ -147,7 +161,7 @@ class EngineServer:
         if t == "start_session":
             return self._start(p)
         if t == "stop_session":
-            self._stop_session("Detenido")
+            self._stop_session(tr("stopped", self.lang), "stop requested by the plugin (Stop button or settings changed)")
             return {}
         if t in ("pause", "resume", "freeze_neutral", "set_expression", "set_quality", "get_metrics"):
             s = self.session
@@ -177,24 +191,26 @@ class EngineServer:
         from avatar_engine.session import Session
 
         with self._op_lock:
-            self._stop_session(None)
+            self._stop_session(None, "new session requested")
+            self.lang = (cfg or {}).get("ui_language", self.lang) if isinstance(cfg, dict) else self.lang
+            self._idle_detail = tr("launching", self.lang)
             s = Session(cfg, self.writer, self.emit, profile_root=self.profile_root)
-            self._idle_detail = "Iniciando..."
             try:
                 result = s.start()
             except Exception as exc:
                 log.error("session start failed: %s", exc)
                 s.stop()
-                self._idle_detail = "Error al iniciar"
+                self._idle_detail = tr("start_failed", self.lang)
                 self.emit("error", {"code": "start_failed", "message": str(exc), "recoverable": True})
                 raise
             self.session = s
             log.info("session started: engine=%s provider=%s", result.get("engine"), result.get("provider"))
             return result
 
-    def _stop_session(self, detail: str | None) -> None:
+    def _stop_session(self, detail: str | None, reason: str = "") -> None:
         s, self.session = self.session, None
         if s is not None:
+            log.info("session stopped (%s)", reason or detail or "replaced")
             s.stop()
         if detail:
             self._idle_detail = detail
@@ -265,6 +281,7 @@ class EngineServer:
             self._shutdown()
 
     def stop(self) -> None:
+        log.info("engine shutting down")
         self._stop.set()
         c = self.conn
         if c is not None:

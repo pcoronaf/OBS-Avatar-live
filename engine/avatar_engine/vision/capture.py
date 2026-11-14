@@ -165,6 +165,7 @@ class CameraCapture:
         self.last_frame_ns = 0
         self.error: str | None = None
         self.opened_via: str | None = None
+        self.read_failures = 0
 
     def _candidates(self) -> list[tuple]:
         """Ways to open the selected camera, best first: (index_or_path, api or None, label).
@@ -241,7 +242,17 @@ class CameraCapture:
                     self.error = None
                 ok, frame = self.cap.read()
                 if not ok or frame is None:
-                    raise CameraUnavailable("camera read failed")
+                    # Momentary hiccups are common (DirectShow under heavy CPU load); reopening costs
+                    # 5-8 s, so retry for ~2 s before giving the device up.
+                    self.read_failures += 1
+                    if self.read_failures < 40:
+                        self._stop.wait(0.05)
+                        continue
+                    self.read_failures = 0
+                    raise CameraUnavailable("camera read failed for ~2 s")
+                if self.read_failures:
+                    log.info("camera %r recovered after %d failed reads", self.device, self.read_failures)
+                    self.read_failures = 0
                 failures = 0
                 if frame.shape[1] != self.width or frame.shape[0] != self.height:
                     frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)

@@ -17,6 +17,7 @@ import numpy as np
 
 from avatar_engine.engines.base import EngineFrame, EngineInfo, EngineUnavailable, IAvatarEngine, next_generation_id
 from avatar_engine.frame_ring import now_ns
+from avatar_engine.i18n import t
 from avatar_engine.imaging import framing_matrix, hex_to_bgr, to_bgra
 from avatar_engine.metrics import FpsCounter, ProcessStats, RollingStats, StageTimer
 from avatar_engine.models import manifest
@@ -50,14 +51,21 @@ def resolve_models(config: dict | None = None) -> tuple[dict[str, Path], dict[st
         hashes = {"yunet_face_detector": det.sha256, "dfm_face_model": manifest.sha256_file(dfm)}
         warnings = [det.warning] if det.warning else []
         return paths_, hashes, warnings
-    for mid in SWAP_MODELS:
+    optional = {"inswapper_compatible_swapper", "inswapper_compatible_swapper_fp16"}
+    errors = {}
+    for mid in (*SWAP_MODELS, "inswapper_compatible_swapper_fp16"):
         try:
             r = manifest.resolve(mid)
         except manifest.ModelError as exc:
+            if mid in optional:
+                errors[mid] = exc
+                continue
             raise EngineUnavailable(str(exc)) from exc
         paths_[mid], hashes[mid] = r.path, r.sha256
         if r.warning:
             warnings.append(r.warning)
+    if not optional & paths_.keys():  # at least one swap model (FP32 or FP16) is needed
+        raise EngineUnavailable(str(errors["inswapper_compatible_swapper"]))
     return paths_, hashes, warnings
 
 
@@ -102,6 +110,7 @@ class LiteCpuSwapEngine(IAvatarEngine):
         self.frames_processed = 0
         self.last_error: str | None = None
         self.last_face_found: bool | None = None
+        self.lang = "auto"
         self._profile_lm: np.ndarray | None = None
 
     @classmethod
@@ -240,8 +249,12 @@ class LiteCpuSwapEngine(IAvatarEngine):
             self._last_inference_start = time.monotonic()
             try:
                 res = self.pipeline.process(frame)
-            except Exception as exc:  # provider/device failure
+            except Exception as exc:  # provider/device failure, or a pre/post-processing error
                 self.on_runtime_error(exc)
+                try:
+                    self.pipeline.tracker.reset()  # start the next frame from a clean detection
+                except Exception:
+                    pass
                 continue
             self.frames_processed += 1
             self.last_face_found = res.face_found
@@ -287,15 +300,15 @@ class LiteCpuSwapEngine(IAvatarEngine):
         return True
 
     def status_hint(self) -> str:
-        """Why no avatar frame is shown yet (Spanish UI text; ASCII-folded when drawn)."""
+        """Why no avatar frame is shown yet (in the UI language; ASCII-folded when drawn)."""
         if self.frames_in == 0:
-            return "Esperando imagen de la webcam..."
+            return t("waiting_webcam", self.lang)
         if self.last_error and self._seq == 0:
-            return "Error de inferencia: " + self.last_error[:90]
+            return t("inference_error", self.lang) + self.last_error[:90]
         if self._seq == 0 and self.frames_processed == 0:
-            return "Procesando el primer cuadro..."
+            return t("first_frame", self.lang)
         if self.last_face_found is False:
-            return "No se detecta un rostro en la webcam (mire a la camara, buena luz)"
+            return t("no_face", self.lang)
         return ""
 
     def get_metrics(self) -> dict[str, Any]:

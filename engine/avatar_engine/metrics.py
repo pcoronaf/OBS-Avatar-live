@@ -143,8 +143,13 @@ class ProcessStats:
                                                    "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage")]
             pmc = PMC()
             pmc.cb = ctypes.sizeof(PMC)
-            ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pmc),
-                                                     pmc.cb)
+            k32 = ctypes.WinDLL("kernel32")
+            k32.GetCurrentProcess.restype = wintypes.HANDLE  # 64-bit pseudo-handle, not a C int
+            fn = k32.K32GetProcessMemoryInfo
+            fn.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            fn.restype = wintypes.BOOL
+            if not fn(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+                return 0.0
             return pmc.WorkingSetSize / 1e6
         try:
             with open("/proc/self/statm") as f:

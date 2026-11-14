@@ -406,6 +406,12 @@ std::string status_text(AvatarSource *s)
 	t += "\n" + std::string(T_("Status.Repeated")) + ": " + fmt_num(m["repeated_frame_pct"], " %") +
 	     "   P50/P95: " + fmt_num(m["capture_to_output_p50_ms"], " ms", 0) + " / " +
 	     fmt_num(m["capture_to_output_p95_ms"], " ms", 0);
+	const json::Value &stages = m["stage_p95_ms"];
+	if (stages.is_object() && stages.size() > 0) {
+		t += "\n" + std::string(T_("Status.Stages")) + ":";
+		for (const std::string &k : stages.keys())
+			t += " " + k + " " + fmt_num(stages[k], " ms", 0);
+	}
 	t += "\nCPU: " + fmt_num(m["cpu_utilization_pct"], " %", 0) + "   RAM: " + fmt_num(m["ram_mb"], " MB", 0) +
 	     "   " + T_("Status.Restarts") + ": " + std::to_string(st.restarts);
 	if (!st.fallback_reason.empty())
@@ -739,7 +745,7 @@ obs_properties_t *avatar_get_properties(void *data)
 	obs_properties_t *perf = obs_properties_create();
 	obs_property_t *budget = obs_properties_add_int_slider(perf, "cpu_budget_pct", T_("Perf.CpuBudget"), 5, 100, 5);
 	obs_property_int_set_suffix(budget, " %");
-	obs_properties_add_int(perf, "max_threads", T_("Perf.MaxThreads"), 1, 64, 1);
+	obs_properties_add_int(perf, "max_threads", T_("Perf.MaxThreads"), 0, 64, 1);
 	obs_property_t *stale = obs_properties_add_int(perf, "stale_frame_ms", T_("Perf.StaleMs"), 100, 5000, 50);
 	obs_property_int_set_suffix(stale, " ms");
 	obs_properties_add_group(props, "grp_perf", T_("Group.Performance"), OBS_GROUP_NORMAL, perf);
@@ -785,7 +791,7 @@ void avatar_get_defaults(obs_data_t *settings)
 	obs_data_set_default_double(settings, "audio_sensitivity", 1.0);
 	obs_data_set_default_int(settings, "mouth_delay_ms", 60);
 	obs_data_set_default_int(settings, "cpu_budget_pct", 60);
-	obs_data_set_default_int(settings, "max_threads", 4);
+	obs_data_set_default_int(settings, "max_threads", 0);
 	obs_data_set_default_int(settings, "stale_frame_ms", 500);
 	obs_data_set_default_string(settings, "swap_model", "inswapper");
 	obs_data_set_default_bool(settings, "license_accept", false);
@@ -813,6 +819,9 @@ json::Value build_session_config(obs_data_t *settings)
 	obs_data_set_string(cfg, "profile_id", obs_data_get_string(settings, "profile_id"));
 	obs_data_set_string(cfg, "drive_mode", engine->drive_mode);
 	obs_data_set_string(cfg, "user_profile", user_profile.c_str());
+	// Texts drawn into the video follow OBS's language (English/Spanish; anything else -> English).
+	const char *locale = obs_get_locale();
+	obs_data_set_string(cfg, "ui_language", (locale && strncmp(locale, "es", 2) == 0) ? "es" : "en");
 	const char *video = obs_data_get_string(settings, "video_input");
 	if (video && *video)
 		obs_data_set_string(cfg, "video_input", video);
@@ -840,7 +849,7 @@ json::Value build_session_config(obs_data_t *settings)
 	if (cpu_only || user_profile == "low_power")
 		order = {"cpu"};
 	else if (user_profile == "intel_optimized")
-		order = {"openvino", "cpu"};
+		order = {"openvino", "directml", "cpu"}; // DirectML also drives Intel iGPUs (OpenVINO is optional)
 	else if (user_profile == "max_performance" && strcmp(engine->id, "accelerated_swap") == 0)
 		order = {"cuda", "directml", "openvino", "cpu"};
 	else
@@ -850,10 +859,10 @@ json::Value build_session_config(obs_data_t *settings)
 	obs_data_set_bool(inf, "startup_benchmark", true);
 	obs_data_set_bool(inf, "enhancement", false);
 	obs_data_set_bool(inf, "adaptive_quality", true);
-	long long threads = obs_data_get_int(settings, "max_threads");
-	if (user_profile == "low_power" && threads > 2)
+	long long threads = obs_data_get_int(settings, "max_threads"); // 0 = auto (all physical cores)
+	if (user_profile == "low_power" && (threads == 0 || threads > 2))
 		threads = 2;
-	obs_data_set_int(inf, "max_threads", threads < 1 ? 1 : threads);
+	obs_data_set_int(inf, "max_threads", threads < 0 ? 0 : threads);
 	const char *swap_model = obs_data_get_string(settings, "swap_model");
 	if (swap_model && strcmp(swap_model, "dfm") == 0) {
 		obs_data_set_string(inf, "swap_model", "dfm");

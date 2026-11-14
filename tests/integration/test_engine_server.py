@@ -125,7 +125,7 @@ def test_full_session_lifecycle(engine_proc, session_name, profile, speech_wav):
         assert c.call("freeze_neutral", {"enabled": True})["ok"]
         assert c.call("set_expression", {"expression_id": "smile", "intensity": 0.6, "duration_ms": 500})["ok"]
         assert c.call("delete_profile", {"profile_id": profile.profile_id})["ok"] is False  # in use
-        assert c.call("stop_session")["ok"]
+        r = c.call("stop_session"); assert r["ok"], r.get("error")
         assert c.call("get_metrics")["error"]["code"] == "no_session"
         assert c.call("start_session", {"engine": "synthetic_head", "drive_mode": "audio",
                                         "profile_id": profile.profile_id})["error"]["code"] == "engine_unavailable"

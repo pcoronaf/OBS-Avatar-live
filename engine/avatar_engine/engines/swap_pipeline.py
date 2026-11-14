@@ -26,13 +26,22 @@ class ProviderError(RuntimeError):
     pass
 
 
+def is_provider_error(exc: BaseException) -> bool:
+    """True if the failure came from ONNX Runtime / the execution provider (worth falling back to CPU),
+    False for errors in our own pre/post-processing (OpenCV, numpy), which a provider switch won't fix."""
+    if isinstance(exc, ProviderError):
+        return True
+    mod = type(exc).__module__ or ""
+    return mod.startswith("onnxruntime")
+
+
 def make_session(model_path: Path, candidate: ProviderCandidate, threads: int):
     import onnxruntime as ort
 
     if fault("provider") and candidate.key != "cpu":
         raise ProviderError(f"fault injection: {candidate.label} failed to initialise")
     so = ort.SessionOptions()
-    so.intra_op_num_threads = max(1, threads)
+    so.intra_op_num_threads = max(0, threads)  # 0: ONNX Runtime uses all physical cores
     so.inter_op_num_threads = 1
     so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -66,21 +75,49 @@ class Recognizer:
         return emb / (np.linalg.norm(emb) + 1e-8)
 
 
+def _emap_cache_path(model_path: Path) -> Path:
+    from avatar_engine import paths
+
+    st = model_path.stat()
+    key = f"{model_path.name}-{st.st_size}-{int(st.st_mtime)}".replace(" ", "_")
+    d = paths.data_dir() / "cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"emap_{key}.npy"
+
+
 def _load_emap(model_path: Path) -> np.ndarray | None:
+    """512x512 identity mapping embedded in inswapper-style models.
+
+    Reading it means parsing the whole (~550 MB) model with `onnx`, which is slow and needs a lot of
+    memory, so the result is cached (keyed by file name, size and mtime) after the first read."""
     sidecar = model_path.with_suffix(".emap.npy")
     if sidecar.exists():
         return np.load(sidecar).astype(np.float32)
+    try:
+        cache = _emap_cache_path(model_path)
+        if cache.exists():
+            return np.load(cache).astype(np.float32)
+    except OSError:
+        cache = None
     try:
         import onnx
         from onnx import numpy_helper
 
         graph = onnx.load(str(model_path)).graph
+        emap = None
         for init in reversed(graph.initializer):
             if list(init.dims) == [512, 512]:
-                return numpy_helper.to_array(init).astype(np.float32)
+                emap = numpy_helper.to_array(init).astype(np.float32)
+                break
+        del graph
     except Exception:
         return None
-    return None
+    if emap is not None and cache is not None:
+        try:
+            np.save(cache, emap)
+        except OSError:
+            pass
+    return emap
 
 
 class Swapper:
@@ -89,12 +126,16 @@ class Swapper:
     def __init__(self, session, model_path: Path) -> None:
         self.sess = session
         self.target_name = self.latent_name = None
+        self.target_dtype = self.latent_dtype = np.float32
         for inp in session.get_inputs():
+            dtype = np.float16 if "float16" in (inp.type or "") else np.float32  # FP16 models (e.g. *_fp16.onnx)
             if len(inp.shape) == 4:
                 self.target_name = inp.name
+                self.target_dtype = dtype
                 self.size = int(inp.shape[2]) if isinstance(inp.shape[2], int) else 128
             else:
                 self.latent_name = inp.name
+                self.latent_dtype = dtype
                 self.latent_dim = int(inp.shape[1]) if isinstance(inp.shape[1], int) else 512
         if self.target_name is None or self.latent_name is None:
             raise ModelError("swap model must have an image input and a latent input")
@@ -113,8 +154,9 @@ class Swapper:
 
     def run(self, crop_bgr: np.ndarray, latent: np.ndarray) -> np.ndarray:
         x = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB).astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-        y = self.sess.run([self.output_name], {self.target_name: x, self.latent_name: latent})[0][0]
-        return y
+        feeds = {self.target_name: x.astype(self.target_dtype), self.latent_name: latent.astype(self.latent_dtype)}
+        y = self.sess.run([self.output_name], feeds)[0][0]
+        return y.astype(np.float32)
 
     @staticmethod
     def to_bgr(y: np.ndarray) -> np.ndarray:
@@ -195,6 +237,18 @@ def build_pipeline(candidate: ProviderCandidate, models: dict[str, Path], thread
     if detector.backend != "yunet":
         raise ModelError("the face-swap engines need the YuNet detector model (landmarks for alignment)")
     rec = Recognizer(make_session(models["arcface_recognition"], candidate, threads))
-    sw = Swapper(make_session(models["inswapper_compatible_swapper"], candidate, threads),
-                 models["inswapper_compatible_swapper"])
+    swap_path = choose_swap_model(models, candidate, (options or {}).get("swap_precision", "auto"))
+    sw = Swapper(make_session(swap_path, candidate, threads), swap_path)
     return SwapPipeline(detector, rec, sw, detection_every_n_frames)
+
+
+def choose_swap_model(models: dict, candidate: ProviderCandidate, precision: str = "auto") -> Path:
+    """FP16 is usually faster on GPUs (DirectML/OpenVINO/CUDA) and slower on CPU; pick per provider."""
+    fp32, fp16 = models.get("inswapper_compatible_swapper"), models.get("inswapper_compatible_swapper_fp16")
+    if precision == "fp16" and fp16:
+        return fp16
+    if precision == "fp32" and fp32:
+        return fp32
+    if candidate.key != "cpu" and fp16:
+        return fp16
+    return fp32 or fp16

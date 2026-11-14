@@ -98,7 +98,13 @@ class LiteAdaptiveEngine(LiteCpuSwapEngine):
 
     def on_runtime_error(self, exc: Exception) -> None:
         super().on_runtime_error(exc)
-        if self.candidate.key != "cpu" and self.runtime_errors >= 3:
+        from avatar_engine.engines.swap_pipeline import is_provider_error
+
+        if not is_provider_error(exc):
+            return  # pre/post-processing bug: switching provider would only make things slower
+        self.provider_errors = getattr(self, "provider_errors", 0) + 1
+        if self.candidate.key != "cpu" and self.provider_errors >= 3:
+            self.provider_errors = 0
             cpu = next((c for c in self.candidates if c.key == "cpu"), ProviderCandidate("cpu", "CPUExecutionProvider", "CPU"))
             self.switch_provider(cpu, f"runtime errors on {self.candidate.label}: {exc}")
             self.runtime_errors = 0

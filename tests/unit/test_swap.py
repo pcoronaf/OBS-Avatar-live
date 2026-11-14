@@ -164,8 +164,12 @@ def test_runtime_errors_fall_back_to_cpu(profile, fake_detector, fake_models):
     eng.emit = lambda n, p: events.append((n, p))
     eng.candidate = ProviderCandidate("openvino", "OpenVINOExecutionProvider", "GPU")  # pretend we run on a GPU
     gen = eng.generation_id
+    import cv2
+
+    eng.on_runtime_error(cv2.error("tracking bug"))  # not the provider's fault: must not switch
+    assert eng.candidate.key == "openvino"
     for _ in range(3):
-        eng.on_runtime_error(RuntimeError("device removed"))
+        eng.on_runtime_error(sp.ProviderError("device removed"))
     assert eng.candidate.key == "cpu" and eng.generation_id != gen
     assert any(n == "fallback" for n, _ in events)
 
@@ -235,6 +239,7 @@ def test_status_hint_explains_missing_avatar(profile, synthetic_face, fake_detec
     eng = LiteCpuSwapEngine(fake_pipeline_factory(fake_detector), _resolver(fake_models))
     eng.initialize(_swap_cfg(profile), {})
     eng.load_profile(profile)
+    eng.lang = "es"
     assert "webcam" in eng.status_hint().lower()  # no frames yet
     eng.frames_in, eng.frames_processed, eng.no_face_frames, eng.last_face_found = 5, 5, 5, False
     assert "rostro" in eng.status_hint()
@@ -248,10 +253,12 @@ def test_session_hint_prefers_camera_error(profile):
     class Cam:
         error = "cannot open camera 'msmf:0'"
 
-    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id},
-                None, lambda n, p: None)
+    s = Session({"engine": "lite_cpu_audio", "drive_mode": "audio", "profile_id": profile.profile_id,
+                 "ui_language": "es"}, None, lambda n, p: None)
     s.inputs.append(Cam())
     assert s.hint().startswith("Webcam no disponible")
+    s.lang = "en"
+    assert s.hint().startswith("Webcam not available")
 
 
 def test_camera_falls_back_to_next_api(monkeypatch):
@@ -292,3 +299,113 @@ def test_status_frame_wraps_long_text():
 
     lines = _wrap("Webcam no disponible: " + "palabra " * 40, 0.7, 2, 600)
     assert 2 <= len(lines) <= 6
+
+
+def test_emap_is_cached_after_first_read(fake_models, monkeypatch):
+    from avatar_engine.engines import swap_pipeline as sp
+
+    path = fake_models["inswapper_compatible_swapper"]
+    first = sp._load_emap(path)
+    assert first is not None and sp._emap_cache_path(path).exists()
+    import onnx
+
+    monkeypatch.setattr(onnx, "load", lambda *a, **k: (_ for _ in ()).throw(AssertionError("parsed again")))
+    assert np.array_equal(sp._load_emap(path), first)
+
+
+def test_threads_zero_means_auto(fake_models):
+    from avatar_engine.engines import swap_pipeline as sp
+
+    sp.make_session(fake_models["inswapper_compatible_swapper"], CPU, 0)  # must not raise
+
+
+def test_camera_rides_out_short_read_hiccups(monkeypatch):
+    from avatar_engine.vision import capture
+
+    reads = iter([False] * 5 + [True] * 50)
+    got = []
+
+    class Cap:
+        def read(self):
+            ok = next(reads, True)
+            return ok, (np.zeros((480, 640, 3), np.uint8) if ok else None)
+
+        def release(self):
+            pass
+
+    cam = capture.CameraCapture(lambda f, t: got.append(t), 0)
+    monkeypatch.setattr(cam, "_open", lambda: Cap())
+    monkeypatch.setattr(cam._stop, "wait", lambda t: cam._stop.is_set())
+    cam.start()
+    import time
+
+    deadline = time.time() + 2
+    while time.time() < deadline and len(got) < 3:
+        time.sleep(0.01)
+    cam.stop()
+    assert got and cam.error is None  # never gave the device up
+
+
+def test_fp16_swap_model(tmp_path):
+    from avatar_engine.engines import swap_pipeline as sp
+    from tests_helpers import make_fake_fp16_swapper
+
+    path = make_fake_fp16_swapper(tmp_path / "inswapper_128_fp16.onnx")
+    sw = sp.Swapper(sp.make_session(path, CPU, 1), path)
+    assert sw.target_dtype == np.float16 and sw.latent_dtype == np.float16
+    y = sw.run(np.full((128, 128, 3), 128, np.uint8), sw.latent(np.ones(512, np.float32)))
+    assert y.dtype == np.float32 and abs(float(y.mean()) - 128 / 255) < 1e-2
+
+
+def test_fp16_file_name_is_accepted(tmp_path, monkeypatch, fake_models):
+    import shutil
+
+    monkeypatch.setenv("AVATAR_LIVE_MODELS_DIR", str(tmp_path))
+    shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128.onnx")
+    shutil.copy(fake_models["inswapper_compatible_swapper"], tmp_path / "inswapper_128_fp16.onnx")
+    res = manifest.acknowledge_present()
+    assert {"inswapper_compatible_swapper", "inswapper_compatible_swapper_fp16"} <= {m["id"] for m in res["acknowledged"]}
+    assert manifest.resolve("inswapper_compatible_swapper").path.name == "inswapper_128.onnx"
+    assert manifest.resolve("inswapper_compatible_swapper_fp16").path.name == "inswapper_128_fp16.onnx"
+
+
+def test_swap_precision_per_provider():
+    from pathlib import Path
+
+    from avatar_engine.engines.swap_pipeline import choose_swap_model
+
+    m = {"inswapper_compatible_swapper": Path("a.onnx"), "inswapper_compatible_swapper_fp16": Path("b.onnx")}
+    gpu = ProviderCandidate("directml", "DmlExecutionProvider", "iGPU")
+    assert choose_swap_model(m, gpu) == Path("b.onnx")
+    assert choose_swap_model(m, CPU) == Path("a.onnx")
+    assert choose_swap_model(m, gpu, "fp32") == Path("a.onnx")
+    assert choose_swap_model({"inswapper_compatible_swapper_fp16": Path("b.onnx")}, CPU) == Path("b.onnx")
+
+
+def test_texts_follow_language():
+    from avatar_engine.i18n import t
+
+    assert t("no_face", "es-ES").startswith("No se detecta")
+    assert t("no_face", "en-US").startswith("No face")
+
+
+def test_tracker_survives_resolution_change(fake_detector, synthetic_face):
+    import cv2
+
+    from avatar_engine.vision.face_tracking import FaceTracker
+
+    img, _, _ = synthetic_face
+    tr = FaceTracker(fake_detector, detect_every=6)
+    tr.update(img)
+    small = cv2.resize(img, (img.shape[1], img.shape[0] * 3 // 4))
+    assert tr.update(small) is not None  # no OpenCV assertion: re-detects instead of tracking
+
+
+def test_opencv_errors_do_not_trigger_provider_fallback():
+    import cv2
+
+    from avatar_engine.engines.swap_pipeline import ProviderError, is_provider_error
+
+    assert is_provider_error(ProviderError("x"))
+    assert not is_provider_error(cv2.error("lkpyramid"))
+    assert not is_provider_error(ValueError("x"))

@@ -88,3 +88,18 @@ def fake_dfm_factory(detector):
                            o.get("dfm_morph", 1.0))
 
     return factory
+
+
+def make_fake_fp16_swapper(path: Path) -> Path:
+    """inswapper-like model with float16 inputs/outputs (like inswapper_128_fp16.onnx)."""
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+
+    emap = numpy_helper.from_array(np.eye(512, dtype=np.float32), "emap")
+    g = helper.make_graph(
+        [helper.make_node("Identity", ["target"], ["output"])], "swap16",
+        [helper.make_tensor_value_info("target", TensorProto.FLOAT16, [1, 3, 128, 128]),
+         helper.make_tensor_value_info("source", TensorProto.FLOAT16, [1, 512])],
+        [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 3, 128, 128])], [emap])
+    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 13)], ir_version=8), str(path))
+    return path

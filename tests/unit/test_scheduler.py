@@ -60,7 +60,8 @@ def test_stale_face_is_never_shown():
     clock[0] += 11_000_000_000  # > stale_max_ms (10 s)
     img, flags = s.tick()
     assert flags & fr.FLAG_DEGRADED
-    assert img[90, 160, 1] < 100  # no face pixels in the middle
+    green = (img[..., 1] > 150) & (img[..., 0] < 50) & (img[..., 2] < 50)
+    assert green.mean() < 0.01  # no face pixels
     assert s.frames_stale == 1
 
 
@@ -95,18 +96,18 @@ def test_fps_counter():
     assert c.fps(now=45 / 30 + 2.0) == 0.0  # stalled producer
 
 
-def test_slow_updates_show_dimmed_face_with_banner_then_status():
+def test_slow_updates_keep_face_with_steady_badge_then_status():
     clock = [1_000_000_000]
     e, s = make(clock)
     e.frame = EngineFrame(face(), 1, 0, clock[0], 1)
     clock[0] += 2_000_000_000  # 2 s old: slow, not dead
     img, flags = s.tick()
     assert flags & fr.FLAG_DEGRADED and flags & fr.FLAG_REPEATED
-    assert 60 < img[90, 160, 1] < 200  # the face is still there, dimmed (200 * 3/5 = 120)
-    assert img[2:15, :, 2].mean() > 100  # red banner on top
+    assert img[90, 160, 1] == 200  # face is shown as is (no dimming)
+    assert img[5:30, 200:315, 2].mean() > img[5:30, 0:100, 2].mean()  # orange badge top-right
     clock[0] += 9_000_000_000  # 11 s old: neutral screen
     img, _ = s.tick()
-    assert img[90, 160, 1] < 100
+    assert ((img[..., 1] > 100) & (img[..., 0] < 50)).mean() < 0.01
 
 
 def test_fps_counter_slow_producer():
