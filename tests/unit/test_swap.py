@@ -310,3 +310,30 @@ def test_threads_zero_means_auto(fake_models):
     from avatar_engine.engines import swap_pipeline as sp
 
     sp.make_session(fake_models["inswapper_compatible_swapper"], CPU, 0)  # must not raise
+
+
+def test_camera_rides_out_short_read_hiccups(monkeypatch):
+    from avatar_engine.vision import capture
+
+    reads = iter([False] * 5 + [True] * 50)
+    got = []
+
+    class Cap:
+        def read(self):
+            ok = next(reads, True)
+            return ok, (np.zeros((480, 640, 3), np.uint8) if ok else None)
+
+        def release(self):
+            pass
+
+    cam = capture.CameraCapture(lambda f, t: got.append(t), 0)
+    monkeypatch.setattr(cam, "_open", lambda: Cap())
+    monkeypatch.setattr(cam._stop, "wait", lambda t: cam._stop.is_set())
+    cam.start()
+    import time
+
+    deadline = time.time() + 2
+    while time.time() < deadline and len(got) < 3:
+        time.sleep(0.01)
+    cam.stop()
+    assert got and cam.error is None  # never gave the device up

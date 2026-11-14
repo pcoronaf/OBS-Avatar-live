@@ -83,7 +83,7 @@ class EngineServer:
 
     def _watch_parent(self) -> None:
         while not self._stop.wait(1.0):
-            if self.parent_pid and not process_alive(self.parent_pid):
+            if self.parent_pid and not process_alive(self.parent_pid):  # OBS closed or crashed
                 log.warning("parent process %s exited; shutting down", self.parent_pid)
                 self.stop()
 
@@ -147,7 +147,7 @@ class EngineServer:
         if t == "start_session":
             return self._start(p)
         if t == "stop_session":
-            self._stop_session("Detenido")
+            self._stop_session("Detenido", "stop requested by the plugin (Stop button or settings changed)")
             return {}
         if t in ("pause", "resume", "freeze_neutral", "set_expression", "set_quality", "get_metrics"):
             s = self.session
@@ -177,7 +177,7 @@ class EngineServer:
         from avatar_engine.session import Session
 
         with self._op_lock:
-            self._stop_session(None)
+            self._stop_session(None, "new session requested")
             s = Session(cfg, self.writer, self.emit, profile_root=self.profile_root)
             self._idle_detail = "Iniciando..."
             try:
@@ -192,9 +192,10 @@ class EngineServer:
             log.info("session started: engine=%s provider=%s", result.get("engine"), result.get("provider"))
             return result
 
-    def _stop_session(self, detail: str | None) -> None:
+    def _stop_session(self, detail: str | None, reason: str = "") -> None:
         s, self.session = self.session, None
         if s is not None:
+            log.info("session stopped (%s)", reason or detail or "replaced")
             s.stop()
         if detail:
             self._idle_detail = detail
@@ -265,6 +266,7 @@ class EngineServer:
             self._shutdown()
 
     def stop(self) -> None:
+        log.info("engine shutting down")
         self._stop.set()
         c = self.conn
         if c is not None:
